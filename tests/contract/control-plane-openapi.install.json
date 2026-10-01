@@ -1,0 +1,3114 @@
+{
+ "components": {
+  "schemas": {
+   "CalendarOut": {
+    "additionalProperties": false,
+    "properties": {
+     "calendarHash": {
+      "title": "Calendarhash",
+      "type": "string"
+     },
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "createdBy": {
+      "format": "uuid",
+      "title": "Createdby",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "latestVersion": {
+      "title": "Latestversion",
+      "type": "integer"
+     },
+     "package": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PackageLinkOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The package that installed the object (the key, all its versions); null for an object created by hand. Filter a list with ?package=<key>"
+     },
+     "provisionalYears": {
+      "items": {
+       "type": "integer"
+      },
+      "title": "Provisionalyears",
+      "type": "array"
+     },
+     "retired": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RetirementOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The retirement of the key; null when in use"
+     },
+     "spec": {
+      "additionalProperties": true,
+      "title": "Spec",
+      "type": "object"
+     },
+     "status": {
+      "default": "active",
+      "description": "retired — every version of the key is out of use (CP-ADR-0074 Zh1)",
+      "enum": [
+       "active",
+       "retired"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "key",
+     "version",
+     "latestVersion",
+     "calendarHash",
+     "spec",
+     "provisionalYears",
+     "createdBy",
+     "createdAt"
+    ],
+    "title": "CalendarOut",
+    "type": "object"
+   },
+   "CalendarRetireOut": {
+    "additionalProperties": false,
+    "properties": {
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "retired": {
+      "$ref": "#/components/schemas/RetirementOut"
+     },
+     "status": {
+      "const": "retired",
+      "default": "retired",
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "retired"
+    ],
+    "title": "CalendarRetireOut",
+    "type": "object"
+   },
+   "CatalogRetireRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "reason": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "reason"
+    ],
+    "title": "CatalogRetireRequest",
+    "type": "object"
+   },
+   "ErrorDetail": {
+    "additionalProperties": false,
+    "properties": {
+     "code": {
+      "title": "Code",
+      "type": "string"
+     },
+     "details": {
+      "additionalProperties": true,
+      "title": "Details",
+      "type": "object"
+     },
+     "message": {
+      "title": "Message",
+      "type": "string"
+     },
+     "requestId": {
+      "title": "Requestid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code",
+     "message",
+     "details",
+     "requestId"
+    ],
+    "title": "ErrorDetail",
+    "type": "object"
+   },
+   "ErrorEnvelope": {
+    "additionalProperties": false,
+    "properties": {
+     "error": {
+      "$ref": "#/components/schemas/ErrorDetail"
+     }
+    },
+    "required": [
+     "error"
+    ],
+    "title": "ErrorEnvelope",
+    "type": "object"
+   },
+   "KnowledgePackOut": {
+    "additionalProperties": true,
+    "description": "A registered pack version as Memory gives it (``kinds`` with their\n``idPatterns``, ``relations``, ``description``), with ``scope`` (``common``\nor ``tenant``) and ``ref`` (``name`` or ``tenant:name``).",
+    "properties": {
+     "kinds": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Kinds",
+      "type": "array"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "ref": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ref"
+     },
+     "relations": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "title": "Relations",
+      "type": "array"
+     },
+     "scope": {
+      "default": "common",
+      "enum": [
+       "common",
+       "tenant"
+      ],
+      "title": "Scope",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name",
+     "version"
+    ],
+    "title": "KnowledgePackOut",
+    "type": "object"
+   },
+   "KnowledgePackRegisterRequest": {
+    "additionalProperties": true,
+    "description": "A domain pack manifest, forwarded to Memory as-is (CP-ADR-0060).\n\nOnly ``scope`` is the core's to read: absent -- a shared pack, registered\nby platform administrators; ``tenant`` -- a pack of the caller's tenant,\nregistered under ``knowledge.packs.manage`` (amendment 2026-09-28).\n``name`` and ``version`` are checked by the core with ``422 pack_invalid``,\nthe rest of the manifest by Memory. The owner of a tenant pack is the\ncore's to name: a ``namespace`` in the manifest is refused.",
+    "properties": {
+     "name": {
+      "description": "Pack name (Memory's grammar).",
+      "title": "Name"
+     },
+     "scope": {
+      "anyOf": [
+       {
+        "enum": [
+         "common",
+         "tenant"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Absent or common: a shared pack (Memory's default scope). tenant: a pack of the caller's tenant.",
+      "title": "Scope"
+     },
+     "version": {
+      "description": "Pack version: a string or a number.",
+      "title": "Version"
+     }
+    },
+    "title": "KnowledgePackRegisterRequest",
+    "type": "object"
+   },
+   "PackageAppliedOut": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "enum": [
+       "create",
+       "update",
+       "rename",
+       "restore",
+       "retire",
+       "unchanged"
+      ],
+      "title": "Action",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Version"
+     }
+    },
+    "required": [
+     "kind",
+     "key",
+     "action",
+     "version"
+    ],
+    "title": "PackageAppliedOut",
+    "type": "object"
+   },
+   "PackageApplyOut": {
+    "additionalProperties": false,
+    "properties": {
+     "applied": {
+      "items": {
+       "$ref": "#/components/schemas/PackageAppliedOut"
+      },
+      "title": "Applied",
+      "type": "array"
+     },
+     "catalogEtag": {
+      "description": "Etag of the catalog after the apply",
+      "title": "Catalogetag",
+      "type": "string"
+     },
+     "planHash": {
+      "title": "Planhash",
+      "type": "string"
+     }
+    },
+    "required": [
+     "planHash",
+     "catalogEtag",
+     "applied"
+    ],
+    "title": "PackageApplyOut",
+    "type": "object"
+   },
+   "PackageApplyRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "overwriteConsole": {
+      "default": false,
+      "description": "Overwrite the fields a person changed since the last apply (owner console); by default they are kept. Part of the plan: apply with the flag the plan was built with",
+      "title": "Overwriteconsole",
+      "type": "boolean"
+     },
+     "package": {
+      "$ref": "#/components/schemas/PackageSource"
+     },
+     "planHash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Planhash",
+      "type": "string"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "package",
+     "planHash"
+    ],
+    "title": "PackageApplyRequest",
+    "type": "object"
+   },
+   "PackageFile": {
+    "additionalProperties": false,
+    "properties": {
+     "content": {
+      "description": "YAML 1.2 text",
+      "maxLength": 1000000,
+      "title": "Content",
+      "type": "string"
+     },
+     "path": {
+      "description": "Path inside the package, e.g. processes/tender.yaml",
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path",
+     "content"
+    ],
+    "title": "PackageFile",
+    "type": "object"
+   },
+   "PackageLinkOut": {
+    "additionalProperties": false,
+    "description": "The package that installed a catalog object (CP-ADR-0074 §11, amendment TASK-000904).",
+    "properties": {
+     "installHash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The installation: planHash of POST /packages:apply, or installHash the installer named in POST /packages:record",
+      "title": "Installhash"
+     },
+     "installedAt": {
+      "format": "date-time",
+      "title": "Installedat",
+      "type": "string"
+     },
+     "key": {
+      "description": "Key of the package (package.yaml -> metadata key)",
+      "title": "Key",
+      "type": "string"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Version of the package whose installation last named the object; null for objects applied before versions were kept",
+      "title": "Version"
+     }
+    },
+    "required": [
+     "key",
+     "version",
+     "installHash",
+     "installedAt"
+    ],
+    "title": "PackageLinkOut",
+    "type": "object"
+   },
+   "PackagePlanOut": {
+    "additionalProperties": false,
+    "properties": {
+     "catalogEtag": {
+      "title": "Catalogetag",
+      "type": "string"
+     },
+     "changes": {
+      "items": {
+       "$ref": "#/components/schemas/PlanChangeOut"
+      },
+      "title": "Changes",
+      "type": "array"
+     },
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "outside": {
+      "description": "Objects of kinds the core does not plan (NotificationRule, Skill, Role…)",
+      "items": {
+       "$ref": "#/components/schemas/PlanOutsideOut"
+      },
+      "title": "Outside",
+      "type": "array"
+     },
+     "package": {
+      "additionalProperties": true,
+      "description": "{key, version} of the package",
+      "title": "Package",
+      "type": "object"
+     },
+     "planHash": {
+      "description": "sha256 over package, catalog etag and the plan body",
+      "title": "Planhash",
+      "type": "string"
+     },
+     "problems": {
+      "items": {
+       "$ref": "#/components/schemas/ProcessProblemOut"
+      },
+      "title": "Problems",
+      "type": "array"
+     },
+     "processes": {
+      "items": {
+       "$ref": "#/components/schemas/PlanProcessOut"
+      },
+      "title": "Processes",
+      "type": "array"
+     },
+     "regulationCoverage": {
+      "items": {
+       "$ref": "#/components/schemas/RegulationCoverageOut"
+      },
+      "title": "Regulationcoverage",
+      "type": "array"
+     }
+    },
+    "required": [
+     "planHash",
+     "catalogEtag",
+     "package",
+     "changes",
+     "processes",
+     "regulationCoverage",
+     "problems",
+     "createdAt"
+    ],
+    "title": "PackagePlanOut",
+    "type": "object"
+   },
+   "PackagePlanRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "overwriteConsole": {
+      "default": false,
+      "description": "Overwrite the fields a person changed since the last apply (owner console); by default they are kept. Part of the plan: apply with the flag the plan was built with",
+      "title": "Overwriteconsole",
+      "type": "boolean"
+     },
+     "package": {
+      "$ref": "#/components/schemas/PackageSource"
+     },
+     "replayLimit": {
+      "default": 50,
+      "description": "Instances replayed per process",
+      "maximum": 200.0,
+      "minimum": 0.0,
+      "title": "Replaylimit",
+      "type": "integer"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Workspace an install variable ${...} of spec.workspaceId stands for",
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "package"
+    ],
+    "title": "PackagePlanRequest",
+    "type": "object"
+   },
+   "PackageSource": {
+    "additionalProperties": false,
+    "description": "The files of one package as the author has them (CP-ADR-0074 §10).",
+    "properties": {
+     "files": {
+      "items": {
+       "$ref": "#/components/schemas/PackageFile"
+      },
+      "maxItems": 1000,
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+     }
+    },
+    "required": [
+     "files"
+    ],
+    "title": "PackageSource",
+    "type": "object"
+   },
+   "PlanChangeOut": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "enum": [
+       "create",
+       "update",
+       "rename",
+       "restore",
+       "retire",
+       "unchanged"
+      ],
+      "title": "Action",
+      "type": "string"
+     },
+     "deprecates": {
+      "description": "TaskType: the active versions the apply deprecates (all but the kept one)",
+      "items": {
+       "type": "integer"
+      },
+      "title": "Deprecates",
+      "type": "array"
+     },
+     "fields": {
+      "items": {
+       "$ref": "#/components/schemas/PlanFieldOut"
+      },
+      "title": "Fields",
+      "type": "array"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "kind": {
+      "description": "The kinds the core plans, in the order the apply publishes them",
+      "enum": [
+       "TaskType",
+       "Agent",
+       "Calendar",
+       "Process",
+       "WorkRule"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "renamedFrom": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Renamedfrom"
+     }
+    },
+    "required": [
+     "kind",
+     "key",
+     "action",
+     "renamedFrom",
+     "fields"
+    ],
+    "title": "PlanChangeOut",
+    "type": "object"
+   },
+   "PlanFieldOut": {
+    "additionalProperties": false,
+    "properties": {
+     "after": {
+      "title": "After"
+     },
+     "applies": {
+      "description": "False when a console-owned field is kept",
+      "title": "Applies",
+      "type": "boolean"
+     },
+     "before": {
+      "title": "Before"
+     },
+     "owner": {
+      "description": "console: a person changed the field since the last apply",
+      "enum": [
+       "package",
+       "console"
+      ],
+      "title": "Owner",
+      "type": "string"
+     },
+     "path": {
+      "title": "Path",
+      "type": "string"
+     }
+    },
+    "required": [
+     "path",
+     "before",
+     "after",
+     "owner",
+     "applies"
+    ],
+    "title": "PlanFieldOut",
+    "type": "object"
+   },
+   "PlanInstancesOut": {
+    "additionalProperties": false,
+    "properties": {
+     "fate": {
+      "enum": [
+       "pin",
+       "migrate",
+       "unaffected"
+      ],
+      "title": "Fate",
+      "type": "string"
+     },
+     "migrationRequired": {
+      "description": "An element they stand on is gone and no migration covers it",
+      "title": "Migrationrequired",
+      "type": "boolean"
+     },
+     "open": {
+      "title": "Open",
+      "type": "integer"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "version",
+     "open",
+     "fate",
+     "migrationRequired"
+    ],
+    "title": "PlanInstancesOut",
+    "type": "object"
+   },
+   "PlanOutsideOut": {
+    "additionalProperties": false,
+    "description": "An object of the package the core does not plan, and who applies it.",
+    "properties": {
+     "appliedBy": {
+      "enum": [
+       "installer",
+       "notification-service"
+      ],
+      "title": "Appliedby",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     }
+    },
+    "required": [
+     "kind",
+     "key",
+     "appliedBy"
+    ],
+    "title": "PlanOutsideOut",
+    "type": "object"
+   },
+   "PlanProcessOut": {
+    "additionalProperties": false,
+    "properties": {
+     "behaviour": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PlanReplayOut"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "fromVersion": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Fromversion"
+     },
+     "instances": {
+      "items": {
+       "$ref": "#/components/schemas/PlanInstancesOut"
+      },
+      "title": "Instances",
+      "type": "array"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "toVersion": {
+      "title": "Toversion",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "key",
+     "fromVersion",
+     "toVersion",
+     "behaviour",
+     "instances"
+    ],
+    "title": "PlanProcessOut",
+    "type": "object"
+   },
+   "PlanReplayOut": {
+    "additionalProperties": false,
+    "properties": {
+     "diverged": {
+      "title": "Diverged",
+      "type": "integer"
+     },
+     "instanceIds": {
+      "description": "Diverged instances, at most 20",
+      "items": {
+       "format": "uuid",
+       "type": "string"
+      },
+      "title": "Instanceids",
+      "type": "array"
+     },
+     "replayed": {
+      "title": "Replayed",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "replayed",
+     "diverged",
+     "instanceIds"
+    ],
+    "title": "PlanReplayOut",
+    "type": "object"
+   },
+   "PrincipalOut": {
+    "additionalProperties": false,
+    "properties": {
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "displayName": {
+      "title": "Displayname",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "kind": {
+      "title": "Kind",
+      "type": "string"
+     },
+     "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "updatedAt": {
+      "format": "date-time",
+      "title": "Updatedat",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "kind",
+     "displayName",
+     "status",
+     "metadata",
+     "createdAt",
+     "updatedAt"
+    ],
+    "title": "PrincipalOut",
+    "type": "object"
+   },
+   "ProcessDefinitionOut": {
+    "additionalProperties": false,
+    "properties": {
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "createdBy": {
+      "format": "uuid",
+      "title": "Createdby",
+      "type": "string"
+     },
+     "definitionHash": {
+      "description": "sha256:<hex> of the canonical JSON of spec",
+      "title": "Definitionhash",
+      "type": "string"
+     },
+     "displayName": {
+      "title": "Displayname",
+      "type": "string"
+     },
+     "expressionProfile": {
+      "description": "CEL profile of its expressions, e.g. cp/1",
+      "title": "Expressionprofile",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "identityAgent": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Agent key the process acts as",
+      "title": "Identityagent"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "latestVersion": {
+      "title": "Latestversion",
+      "type": "integer"
+     },
+     "owner": {
+      "anyOf": [
+       {
+        "items": {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "spec.owner: the assignment chain tasks about the process itself go to (regulation drift, failed instances); null when the process has none",
+      "title": "Owner"
+     },
+     "package": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PackageLinkOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The package that installed the object (the key, all its versions); null for an object created by hand. Filter a list with ?package=<key>"
+     },
+     "retired": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RetirementOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The retirement of the key; null when in use"
+     },
+     "spec": {
+      "additionalProperties": true,
+      "title": "Spec",
+      "type": "object"
+     },
+     "status": {
+      "default": "active",
+      "description": "retired — every version of the key is out of use (CP-ADR-0074 Zh1)",
+      "enum": [
+       "active",
+       "retired"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "warnings": {
+      "description": "Findings that did not refuse the version",
+      "items": {
+       "$ref": "#/components/schemas/ProcessProblemOut"
+      },
+      "title": "Warnings",
+      "type": "array"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "workspaceId",
+     "key",
+     "version",
+     "latestVersion",
+     "displayName",
+     "definitionHash",
+     "identityAgent",
+     "expressionProfile",
+     "spec",
+     "createdBy",
+     "createdAt"
+    ],
+    "title": "ProcessDefinitionOut",
+    "type": "object"
+   },
+   "ProcessProblemOut": {
+    "additionalProperties": false,
+    "description": "One finding of a check: the same shape from every route and MCP tool.",
+    "properties": {
+     "code": {
+      "description": "Machine-readable class, e.g. unknown_data_field",
+      "title": "Code",
+      "type": "string"
+     },
+     "file": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Package file, when the object came from one",
+      "title": "File"
+     },
+     "hint": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Hint"
+     },
+     "line": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Line"
+     },
+     "message": {
+      "title": "Message",
+      "type": "string"
+     },
+     "path": {
+      "description": "JSON pointer into the object, e.g. /spec/stages/0/steps/1",
+      "title": "Path",
+      "type": "string"
+     },
+     "severity": {
+      "enum": [
+       "error",
+       "warning"
+      ],
+      "title": "Severity",
+      "type": "string"
+     }
+    },
+    "required": [
+     "code",
+     "severity",
+     "path",
+     "file",
+     "line",
+     "message",
+     "hint"
+    ],
+    "title": "ProcessProblemOut",
+    "type": "object"
+   },
+   "ProcessRetireOut": {
+    "additionalProperties": false,
+    "description": "``POST /process-definitions/{key}:retire``: no new instances, open ones run to the end.",
+    "properties": {
+     "byVersion": {
+      "description": "Only the versions with open instances",
+      "items": {
+       "$ref": "#/components/schemas/ProcessRetireVersionOut"
+      },
+      "title": "Byversion",
+      "type": "array"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "openInstances": {
+      "description": "Open (running, suspended) instances of every workspace",
+      "minimum": 0.0,
+      "title": "Openinstances",
+      "type": "integer"
+     },
+     "retired": {
+      "$ref": "#/components/schemas/RetirementOut"
+     },
+     "status": {
+      "const": "retired",
+      "default": "retired",
+      "title": "Status",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "retired",
+     "openInstances",
+     "byVersion"
+    ],
+    "title": "ProcessRetireOut",
+    "type": "object"
+   },
+   "ProcessRetireVersionOut": {
+    "additionalProperties": false,
+    "properties": {
+     "openInstances": {
+      "minimum": 1.0,
+      "title": "Openinstances",
+      "type": "integer"
+     },
+     "version": {
+      "minimum": 1.0,
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "version",
+     "openInstances"
+    ],
+    "title": "ProcessRetireVersionOut",
+    "type": "object"
+   },
+   "ProjectOut": {
+    "additionalProperties": false,
+    "properties": {
+     "activeConfigRevision": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Activeconfigrevision"
+     },
+     "activeConfigRevisionId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Activeconfigrevisionid"
+     },
+     "archivedAt": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Archivedat"
+     },
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "createdBy": {
+      "format": "uuid",
+      "title": "Createdby",
+      "type": "string"
+     },
+     "customFields": {
+      "additionalProperties": true,
+      "title": "Customfields",
+      "type": "object"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "ownerPrincipalId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Ownerprincipalid"
+     },
+     "parentProjectId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parentprojectid"
+     },
+     "settings": {
+      "additionalProperties": true,
+      "title": "Settings",
+      "type": "object"
+     },
+     "startDate": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Startdate"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "statusKey": {
+      "title": "Statuskey",
+      "type": "string"
+     },
+     "systemStatusCategory": {
+      "title": "Systemstatuscategory",
+      "type": "string"
+     },
+     "targetDate": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Targetdate"
+     },
+     "templateId": {
+      "format": "uuid",
+      "title": "Templateid",
+      "type": "string"
+     },
+     "templateKey": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Templatekey"
+     },
+     "templateVersion": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Templateversion"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "updatedAt": {
+      "format": "date-time",
+      "title": "Updatedat",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "workspaceId": {
+      "format": "uuid",
+      "title": "Workspaceid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "workspaceId",
+     "templateId",
+     "statusKey",
+     "systemStatusCategory",
+     "ownerPrincipalId",
+     "startDate",
+     "targetDate",
+     "customFields",
+     "settings",
+     "activeConfigRevisionId",
+     "status",
+     "version",
+     "createdBy",
+     "createdAt",
+     "updatedAt",
+     "archivedAt"
+    ],
+    "title": "ProjectOut",
+    "type": "object"
+   },
+   "RegulationCoverageOut": {
+    "additionalProperties": false,
+    "properties": {
+     "covered": {
+      "additionalProperties": {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      "description": "Section -> element ids governed by it",
+      "title": "Covered",
+      "type": "object"
+     },
+     "document": {
+      "title": "Document",
+      "type": "string"
+     },
+     "found": {
+      "description": "The document is in memory",
+      "title": "Found",
+      "type": "boolean"
+     },
+     "uncovered": {
+      "description": "Sections no element is governed by",
+      "items": {
+       "type": "string"
+      },
+      "title": "Uncovered",
+      "type": "array"
+     }
+    },
+    "required": [
+     "document",
+     "found",
+     "covered",
+     "uncovered"
+    ],
+    "title": "RegulationCoverageOut",
+    "type": "object"
+   },
+   "RetirementOut": {
+    "additionalProperties": false,
+    "description": "When, by whom and why a process or calendar key was retired (CP-ADR-0074 Zh1).",
+    "properties": {
+     "at": {
+      "format": "date-time",
+      "title": "At",
+      "type": "string"
+     },
+     "by": {
+      "format": "uuid",
+      "title": "By",
+      "type": "string"
+     },
+     "reason": {
+      "title": "Reason",
+      "type": "string"
+     }
+    },
+    "required": [
+     "at",
+     "by",
+     "reason"
+    ],
+    "title": "RetirementOut",
+    "type": "object"
+   },
+   "RoleOut": {
+    "additionalProperties": false,
+    "properties": {
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "package": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PackageLinkOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The package that installed the object (the key, all its versions); null for an object created by hand. Filter a list with ?package=<key>"
+     },
+     "slug": {
+      "title": "Slug",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "updatedAt": {
+      "format": "date-time",
+      "title": "Updatedat",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "workspaceId",
+     "slug",
+     "name",
+     "description",
+     "version",
+     "createdAt",
+     "updatedAt"
+    ],
+    "title": "RoleOut",
+    "type": "object"
+   },
+   "WorkspaceKnowledgePacksOut": {
+    "additionalProperties": false,
+    "description": "The packs of a workspace tree's namespace (CP-ADR-0060, amendment\n2026-09-30): ``packs`` and ``strict`` as ``PUT .../knowledge-packs`` takes\nthem, ``effective`` -- the packs Memory applies (its default pack while\nnobody configured the namespace, ``configured: false``).",
+    "properties": {
+     "configured": {
+      "title": "Configured",
+      "type": "boolean"
+     },
+     "effective": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Effective",
+      "type": "array"
+     },
+     "packs": {
+      "items": {
+       "type": "string"
+      },
+      "title": "Packs",
+      "type": "array"
+     },
+     "rootWorkspaceId": {
+      "format": "uuid",
+      "title": "Rootworkspaceid",
+      "type": "string"
+     },
+     "strict": {
+      "title": "Strict",
+      "type": "boolean"
+     },
+     "updatedAt": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Updatedat"
+     },
+     "workspaceId": {
+      "format": "uuid",
+      "title": "Workspaceid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "workspaceId",
+     "rootWorkspaceId",
+     "configured",
+     "packs",
+     "strict",
+     "effective"
+    ],
+    "title": "WorkspaceKnowledgePacksOut",
+    "type": "object"
+   },
+   "WorkspaceKnowledgePacksRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "packs": {
+      "items": {
+       "maxLength": 128,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Packs",
+      "type": "array"
+     },
+     "strict": {
+      "default": false,
+      "title": "Strict",
+      "type": "boolean"
+     }
+    },
+    "required": [
+     "packs"
+    ],
+    "title": "WorkspaceKnowledgePacksRequest",
+    "type": "object"
+   },
+   "WorkspaceOut": {
+    "additionalProperties": false,
+    "properties": {
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "customFields": {
+      "additionalProperties": true,
+      "title": "Customfields",
+      "type": "object"
+     },
+     "description": {
+      "title": "Description",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "name": {
+      "title": "Name",
+      "type": "string"
+     },
+     "parentId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Parentid"
+     },
+     "slug": {
+      "title": "Slug",
+      "type": "string"
+     },
+     "status": {
+      "title": "Status",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "typeId": {
+      "format": "uuid",
+      "title": "Typeid",
+      "type": "string"
+     },
+     "updatedAt": {
+      "format": "date-time",
+      "title": "Updatedat",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "parentId",
+     "typeId",
+     "slug",
+     "name",
+     "description",
+     "customFields",
+     "status",
+     "version",
+     "createdAt",
+     "updatedAt"
+    ],
+    "title": "WorkspaceOut",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "description": "Coordination backend for humans, AI agents and automated processes: tasks, sessions, atomic claims with fencing tokens, immutable domain events, transactional outbox and realtime updates.",
+  "title": "control-plane",
+  "version": "0.9.0"
+ },
+ "paths": {
+  "/api/v1/calendars/{key}:retire": {
+   "post": {
+    "description": "CP-ADR-0074, amendment Zh3: ``409 calendar_in_use`` while a process needs it.",
+    "operationId": "retire_calendar_api_v1_calendars__key__retire_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "dryRun",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Dryrun",
+       "type": "boolean"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CatalogRetireRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CalendarRetireOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Retire a calendar no process needs any more",
+    "tags": [
+     "calendars"
+    ]
+   }
+  },
+  "/api/v1/calendars/{ref}": {
+   "get": {
+    "operationId": "get_calendar_api_v1_calendars__ref__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "ref",
+      "required": true,
+      "schema": {
+       "title": "Ref",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/CalendarOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "A calendar by key (latest version) or key@version",
+    "tags": [
+     "calendars"
+    ]
+   }
+  },
+  "/api/v1/knowledge/packs": {
+   "post": {
+    "description": "A shared pack (platform administrators) or, with ``scope: tenant``, a\npack of the caller's tenant (``knowledge.packs.manage``).",
+    "operationId": "register_pack_api_v1_knowledge_packs_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/KnowledgePackRegisterRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     },
+     "502": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory service failed (memory_unavailable)"
+     },
+     "503": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory provider not configured"
+     }
+    },
+    "summary": "Register Pack",
+    "tags": [
+     "knowledge"
+    ]
+   }
+  },
+  "/api/v1/knowledge/packs/{ref}": {
+   "get": {
+    "description": "A registered pack version: ``name@version``, ``name`` for the latest,\n``tenant:name[@version]`` for a pack of the caller's tenant.",
+    "operationId": "get_pack_api_v1_knowledge_packs__ref__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "ref",
+      "required": true,
+      "schema": {
+       "title": "Ref",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/KnowledgePackOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "No such pack"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     },
+     "502": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory service failed (memory_unavailable)"
+     },
+     "503": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory provider not configured"
+     }
+    },
+    "summary": "Get Pack",
+    "tags": [
+     "knowledge"
+    ]
+   }
+  },
+  "/api/v1/packages:apply": {
+   "post": {
+    "operationId": "apply_package_api_v1_packages_apply_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PackageApplyRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PackageApplyOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Apply exactly the plan with this hash; the catalog changed since — 409 plan_stale",
+    "tags": [
+     "packages"
+    ]
+   }
+  },
+  "/api/v1/packages:plan": {
+   "post": {
+    "operationId": "plan_package_api_v1_packages_plan_post",
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/PackagePlanRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PackagePlanOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Plan applying a package: structural and behavioural diff, open instances, hash",
+    "tags": [
+     "packages"
+    ]
+   }
+  },
+  "/api/v1/principals/{principal_id}": {
+   "get": {
+    "operationId": "get_principal_api_v1_principals__principal_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "principal_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Principal Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/PrincipalOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Get Principal",
+    "tags": [
+     "principals"
+    ]
+   }
+  },
+  "/api/v1/process-definitions/{key}:retire": {
+   "post": {
+    "description": "CP-ADR-0074, amendment Zh2; ``dryRun`` — the same checks and answer, nothing written.",
+    "operationId": "retire_process_definition_api_v1_process_definitions__key__retire_post",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "key",
+      "required": true,
+      "schema": {
+       "title": "Key",
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "dryRun",
+      "required": false,
+      "schema": {
+       "default": false,
+       "title": "Dryrun",
+       "type": "boolean"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/CatalogRetireRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProcessRetireOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Retire a process — no new instances, open ones run to the end",
+    "tags": [
+     "processes"
+    ]
+   }
+  },
+  "/api/v1/process-definitions/{ref}": {
+   "get": {
+    "operationId": "get_process_definition_api_v1_process_definitions__ref__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "ref",
+      "required": true,
+      "schema": {
+       "title": "Ref",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProcessDefinitionOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "A process by key (latest version) or key@version",
+    "tags": [
+     "processes"
+    ]
+   }
+  },
+  "/api/v1/projects/{project_id}": {
+   "get": {
+    "operationId": "get_project_api_v1_projects__project_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "project_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Project Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ProjectOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Get Project",
+    "tags": [
+     "projects"
+    ]
+   }
+  },
+  "/api/v1/roles/{role_id}": {
+   "get": {
+    "operationId": "get_role_api_v1_roles__role_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "role_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Role Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/RoleOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Get Role",
+    "tags": [
+     "organization"
+    ]
+   }
+  },
+  "/api/v1/workspaces/{workspace_id}": {
+   "get": {
+    "operationId": "get_workspace_api_v1_workspaces__workspace_id__get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "workspace_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Workspace Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspaceOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     }
+    },
+    "summary": "Get Workspace",
+    "tags": [
+     "workspaces"
+    ]
+   }
+  },
+  "/api/v1/workspaces/{workspace_id}/knowledge-packs": {
+   "get": {
+    "description": "The packs enabled for the workspace's tree and its strictness.",
+    "operationId": "get_workspace_packs_api_v1_workspaces__workspace_id__knowledge_packs_get",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "workspace_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Workspace Id",
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/WorkspaceKnowledgePacksOut"
+        }
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     },
+     "502": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory service failed (memory_unavailable)"
+     },
+     "503": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory provider not configured"
+     }
+    },
+    "summary": "Get Workspace Packs",
+    "tags": [
+     "knowledge"
+    ]
+   },
+   "put": {
+    "operationId": "set_workspace_packs_api_v1_workspaces__workspace_id__knowledge_packs_put",
+    "parameters": [
+     {
+      "in": "path",
+      "name": "workspace_id",
+      "required": true,
+      "schema": {
+       "format": "uuid",
+       "title": "Workspace Id",
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "$ref": "#/components/schemas/WorkspaceKnowledgePacksRequest"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {}
+       }
+      },
+      "description": "Successful Response"
+     },
+     "400": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Malformed request"
+     },
+     "401": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Missing or invalid credentials"
+     },
+     "403": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Insufficient permissions"
+     },
+     "404": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Not found"
+     },
+     "409": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Concurrency conflict"
+     },
+     "422": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Domain validation failed"
+     },
+     "502": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory service failed (memory_unavailable)"
+     },
+     "503": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "$ref": "#/components/schemas/ErrorEnvelope"
+        }
+       }
+      },
+      "description": "Memory provider not configured"
+     }
+    },
+    "summary": "Set Workspace Packs",
+    "tags": [
+     "knowledge"
+    ]
+   }
+  }
+ },
+ "source": "control-plane@dc6edf1"
+}

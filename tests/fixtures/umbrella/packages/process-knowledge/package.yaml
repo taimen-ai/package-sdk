@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Процессы и база знаний (TAI-ADR-0054 п.9, CP-ADR-0076 §7–8): правило сверки
+# изменённого регламента с процессами, которые на него опираются, и тип задачи
+# подтверждения уроков закрытого дела. Нейтрально к домену: ни один вид, тип или
+# скилл не знает предметной области — её приносят пакеты процессов (tenders,
+# invoice-payment).
+#
+# Пакет онтологии памяти (виды process, process_stage, process_step, case, lesson,
+# regulation и их связи) — данные интеграции integrations/process_knowledge
+# (packs/process-knowledge.yaml), как software-delivery у selfdev: каталог ядра вида
+# KnowledgePack пока не знает (TAI-ADR-0044), регистрирует пакет администратор
+# платформы через ядро (POST /knowledge/packs) командой
+# `taimen-process-knowledge-pack register`, включает для дерева workspace —
+# `… enable --workspace <корень>`.
+#
+# Скиллы — код интеграции (skill-sdk export --package packages/process-knowledge
+# taimen_process_knowledge); исполняет их хостинг local-скиллов с пакетом
+# taimen_process_knowledge, адресом CONTROL_PLANE_URL, правом processes.read и LLM
+# инсталляции (SKILL_LLM_*).
+apiVersion: taimen.ai/v1
+kind: Package
+key: process-knowledge
+spec:
+  version: 0.2.1
+  displayName: Process knowledge
+  description: >-
+    Регламент изменился — сверка с процессами, чьи элементы на него ссылаются, и
+    задача владельцу процесса по каждому расхождению; уроки закрытого дела — на
+    подтверждение человеку. Онтология памяти процессов — пакетом интеграции.

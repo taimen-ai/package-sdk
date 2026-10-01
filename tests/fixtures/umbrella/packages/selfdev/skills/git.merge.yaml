@@ -1,0 +1,60 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: git.merge
+spec:
+  version: '1'
+  description: Влить опубликованную ветку в целевую (--no-ff) и запушить
+  sideEffects: external_write
+  riskLevel: medium
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      - branch
+      - commit
+      - target
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+        commit:
+          type: string
+          pattern: ^[0-9a-f]{7,40}$
+        target:
+          type: string
+          minLength: 1
+        message:
+          type: string
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - merged
+      properties:
+        merged:
+          type: boolean
+        sha:
+          type: string
+        reason:
+          enum:
+          - conflict
+          - branch_moved
+          - already_merged
+        details:
+          type: string
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 3
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.git_merge:run

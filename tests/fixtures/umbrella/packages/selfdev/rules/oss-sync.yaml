@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Открытая поставка догоняет релизы (TAI-ADR-0043, амендменты 2026-09-25 и о
+# релизах): на коммит суперпроекта oss.check@2 находит для каждого компонента перечня
+# deploy/oss/components.yaml релиз — самый свежий semver-тег на закреплённой ревизии
+# или её предке — и сверяет его с зеркалом; каждый готовый — работа oss-publish
+# исполнителю скиллов. Тег обычно ставят после того, как указатель уже закреплён, —
+# его подхватывает парное правило oss-release-sync по расписанию с тем же dedup-ключом.
+# Дедуп по компоненту и коммиту релиза: одна публикация на релиз. Пара правил
+# oss-check-red / oss-check-resolved ведёт то, что не публикуется.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: oss-sync
+spec:
+  description: Релиз компонента на закреплённой ревизии чист — опубликовать в открытой поставке
+  workspaceId: ${SELFDEV_WORKSPACE_ID}
+  identity: {agent: selfdev-rules}
+  trigger: {kind: observation, type: repo.commit_observed}
+  condition: {eq: [{var: payload.data.repo}, project-taimen-ai]}
+  interpretation:
+    skill: oss.check@2
+    inputs:
+      superproject: ${SELFDEV_SUPERPROJECT_URL}
+      ref: "{{payload.data.sha}}"
+  action:
+    kind: ensure_work
+    taskType: oss-publish
+    forEach: skill.output.ready
+    dedupKeyTemplate: "oss-publish:{{item.component}}:{{item.sha}}"
+    fields:
+      title: "Опубликовать {{item.component}} {{item.release}}"
+      priority: medium
+      assignee: ${SELFDEV_SKILLS_EXECUTOR}
+      description: |
+        Коммит суперпроекта {{skill.output.ref}} закрепил {{item.component}} на {{item.pinned}};
+        его релиз {{item.release}} ({{item.sha}}) по oss.check@2 публикуем. Снимок дерева
+        релиза уходит в main зеркала {{item.mirror}} с тегом {{item.release}}, сабмодуль в
+        umbrella сдвигается на снимок (скилл oss.publish@2).
+      customFields:
+        component: "{{item.component}}"
+        sha: "{{item.sha}}"
+        release: "{{item.release}}"
+        pinned: "{{item.pinned}}"
+        repository: "{{item.repository}}"
+        mirror: "{{item.mirror}}"
+        umbrella: "{{item.umbrella}}"
+        umbrellaBranch: "{{item.umbrellaBranch}}"
+        superproject: "{{item.superproject}}"
+        superprojectRef: "{{skill.output.ref}}"

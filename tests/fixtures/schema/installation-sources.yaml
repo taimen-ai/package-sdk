@@ -1,0 +1,16 @@
+apiVersion: taimen.ai/v1
+kind: Installation
+key: acme-prod
+spec:
+  packagesDir: packages
+  packages:
+    - notify
+    - {key: acme-claims, path: ../claims}
+    - {key: helpdesk-crm, git: https://git.example.com/acme/helpdesk-crm.git, ref: v0.2.0}
+  knowledge:
+    - {workspace: "${CLAIMS_WORKSPACE_ID}", packs: ["company@1", "claims@1"]}
+  retire:
+    TaskType: [legacy-claim]
+    WorkRule: [claim-received-v0]
+    Process: [claim-v0]
+    Calendar: [old-calendar]

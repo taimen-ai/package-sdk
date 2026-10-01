@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Сервисы платформы как агенты без размещения (TAI-ADR-0052, declarative-agents D014):
+# описание — единственный источник прав сервиса в ядре и IAM-части его service account.
+# deploy/bootstrap.py выпускает учётку по identity.iam, публикует описание и привязывает
+# личность (PUT /agents/{key}/identity) — principal и связку выводит ядро. fleet эти
+# личности не трогает (identity.kind: service).
+apiVersion: taimen.ai/v1
+kind: Package
+key: platform-services
+spec:
+  version: 0.2.0
+  displayName: Platform services
+  description: 'Личности сервисов платформы, работающих по client credentials IAM: права в ядре и IAM-часть учётки
+    — описанием (TAI-ADR-0052); учётку выпускает bootstrap установки, principal и связку выводит ядро.'
+  requires: []

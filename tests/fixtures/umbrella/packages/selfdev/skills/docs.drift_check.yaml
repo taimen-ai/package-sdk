@@ -1,0 +1,113 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: docs.drift_check
+spec:
+  version: '2'
+  description: Сверить руководство guide/ с кодом и конфигурацией (без LLM)
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        pages:
+          type: array
+          items:
+            type: string
+          maxItems: 500
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - gaps
+      - pages
+      - stats
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - consistent
+          - drift
+        gaps:
+          type: array
+          items:
+            type: object
+            required:
+            - kind
+            - claim
+            - page
+            - line
+            - evidence
+            properties:
+              kind:
+                enum:
+                - missing_in_code
+                - deprecated_ref
+                - perimeter_mismatch
+              claim:
+                type: string
+              page:
+                type: string
+              line:
+                type: integer
+              evidence:
+                type: string
+        pages:
+          type: array
+          items:
+            type: object
+            required:
+            - page
+            - count
+            - kinds
+            - claims
+            - text
+            properties:
+              page:
+                type: string
+              count:
+                type: integer
+              kinds:
+                type: array
+                items:
+                  enum:
+                  - missing_in_code
+                  - deprecated_ref
+                  - perimeter_mismatch
+              claims:
+                type: array
+                items:
+                  type: string
+              text:
+                type: string
+        undocumented:
+          type: array
+          items:
+            type: string
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.docs_drift:invoke

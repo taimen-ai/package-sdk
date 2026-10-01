@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Повторное обращение → разбор скиллом пакета review-base → согласование с его категорией.
+# Внутренние обращения не разбираются.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: request-reopened
+spec:
+  description: A reopened request is classified and filed for approval
+  trigger: {kind: observation, type: request.reopened}
+  condition:
+    and:
+      - {exists: payload.data.request}
+      - {ne: [{var: payload.data.channel}, internal]}
+  interpretation:
+    skill: request.classify@1
+    inputs: {text: "{{payload.content}}"}
+  action:
+    kind: ensure_work
+    taskType: request-approval
+    dedupKeyTemplate: "reopened:{{payload.data.request}}"
+    fields:
+      title: "Approve reopened request {{payload.data.request}}"
+      customFields:
+        request: "{{payload.data.request}}"
+        category: "{{skill.output.category}}"

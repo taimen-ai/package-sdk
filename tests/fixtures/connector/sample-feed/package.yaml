@@ -1,0 +1,7 @@
+apiVersion: taimen.ai/v1
+kind: Package
+key: sample-feed
+spec:
+  version: 0.1.0
+  displayName: Sample feed
+  variables: {}

@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# "Follow up a reopened claim": one-off work the rule `claim-reopened` files when a
+# customer reopens a ticket whose case is already closed.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: claim-followup
+spec:
+  displayName: Follow up a reopened claim
+  description: The customer reopened a ticket after the claim was resolved
+  fieldSchema:
+    type: object
+    properties:
+      ticketId: {type: string, title: Ticket}
+      category: {type: string, title: Category}
+      severity: {type: string, title: Severity}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [done, cancelled]}
+    initialStatus: todo
+    completionStatus: done

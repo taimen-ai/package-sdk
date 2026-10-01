@@ -1,0 +1,83 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Отмена заказчиком с компенсациями (сценарий 7, приёмка 2): цена согласована,
+# обеспечение заявки внесено, документы ещё готовятся. Отмена в ЕИС → работа стадий
+# остановлена, согласование цены отозвано (данные и память), финансам — задача
+# освободить обеспечение; после неё дело закрыто с исходом cancelled-by-customer, а
+# незаконченная задача по документам отменена.
+process: tender
+name: отмена заказчиком — отзыв согласования и освобождение обеспечения
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    # с заказчиком уже было дело — подсказка known-customer
+    - step: recall-history
+      output: {nodes: [{kind: case, key: "tender:0000000000025000002", title: "Поддержка сайта"}]}
+    - {step: recall-prices, output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000001"
+          purchase:
+            number: "0000000000026000001"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка ИС
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "2500000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+            applicationGuarantee: {amount: "25000.00", partPercent: "1"}
+  - expect: {data: {advice.level: known-customer}}
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: знакомый заказчик}}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: false}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 2300000, rationale: расчёт}}
+  - approve: {step: approve-price, by: bob, decision: approve}
+  - complete: {step: application-guarantee, by: fin, output: {provided: true}}
+  - expect: {data: {priceApproval.outcome: approved, application.guaranteeProvided: true},
+             tasks: [{step: prepare-documents, status: open}]}
+  - advance: P2D
+  - emit:
+      observation: procurement.cancelled
+      source: eis
+      payload:
+        kind: procurement.cancelled
+        data: {kind: cancelled, purchaseNumber: "0000000000026000001",
+               details: {reason: Решение заказчика об отмене определения поставщика}}
+  # компенсации в обратном порядке: сначала обеспечение (сделано последним), затем согласование
+  - expect:
+      status: suspended
+      data: {cancellation.reason: Решение заказчика об отмене определения поставщика}
+      tasks: [{step: release-application-guarantee, assignee: fin, status: open}]
+  - complete: {step: release-application-guarantee, by: fin, output: {released: true}}
+  - expect:
+      status: completed
+      outcome: cancelled-by-customer
+      events: [process.compensated, process.completed]
+      data: {release.applicationGuarantee: true, priceApproval.revoked: true}
+      memory: {remembered: [{facts: {priceApprovalRevoked: true,
+                                     revokedReason: Решение заказчика об отмене определения поставщика}}]}
+      tasks: [{step: prepare-documents, status: cancelled}]
+      noSideEffects: true

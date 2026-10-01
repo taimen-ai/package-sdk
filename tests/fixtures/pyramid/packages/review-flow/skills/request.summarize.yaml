@@ -1,0 +1,38 @@
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: request.summarize
+spec:
+  version: '1'
+  description: A short summary of a request for its reviewer.
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        request:
+          title: Request
+          type: string
+      required:
+      - request
+      title: SummarizeIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        summary:
+          title: Summary
+          type: string
+      required:
+      - summary
+      title: SummarizeOut
+      type: object
+    idempotency: none
+    timeoutSeconds: 60
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: review_flow.skills:summarize

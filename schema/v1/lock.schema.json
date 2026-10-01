@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taimen.ai/schema/packages/v1/lock.schema.json",
+  "title": "Фиксация источников установки", "$comment": "TAI-ADR-0062 п.6",
+  "description": "Файл packages.lock рядом с файлом установки. Пишет package-sdk lock; для каждого пакета — источник, коммит и хэш содержимого. План строится по lock: для источника git без записи — lock_required, при расхождении хэша — отказ.",
+  "type": "object",
+  "required": ["format", "packages"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "package-sdk.lock/v1"},
+    "installation": {"type": "string", "description": "Ключ установки, для которой снята фиксация"},
+    "packages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["key", "version", "source", "contentHash"],
+        "additionalProperties": false,
+        "properties": {
+          "key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+          "version": {"type": "string", "pattern": "^\\d+\\.\\d+\\.\\d+$"},
+          "source": {
+            "description": "Откуда пакет: {path} — каталог относительно файла установки; {git, ref, path?} — тег git и подкаталог пакета в репозитории (то же имя path, что в установке)",
+            "oneOf": [
+              {
+                "type": "object", "required": ["path"], "additionalProperties": false,
+                "properties": {"path": {"type": "string", "minLength": 1}}
+              },
+              {
+                "type": "object", "required": ["git", "ref"], "additionalProperties": false,
+                "properties": {
+                  "git": {"type": "string", "pattern": "^(https://[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]+)?/[^\\s@]*[^\\s@/]|git@[A-Za-z0-9][A-Za-z0-9.-]*:[^\\s@-][^\\s@]*)$"},
+                  "ref": {"type": "string", "minLength": 1, "maxLength": 200, "pattern": "^(?!.*\\.\\.)(?!.*//)(?!.*(\\.|/|\\.lock)$)[A-Za-z0-9_][A-Za-z0-9._+/-]*$"},
+                  "path": {"type": "string", "minLength": 1, "maxLength": 500, "pattern": "^[A-Za-z0-9_][A-Za-z0-9._-]*(/[A-Za-z0-9_][A-Za-z0-9._-]*)*$"}
+                }
+              }
+            ]
+          },
+          "commit": {"type": "string", "pattern": "^[0-9a-f]{40}$", "description": "Коммит источника git"},
+          "contentHash": {
+            "type": "string", "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "sha256 канонического набора файлов пакета: пути по порядку и их байты, без .layout/ (та же функция, что installHash записи связей)"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,5 @@
+process: claim
+name: refund above threshold needs approval
+steps:
+  - emit: {observation: helpdesk.ticket_created, payload: {ticketId: T-1, amount: 72000}}
+  - expect: {status: running}

@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+subject: taskType
+taskType: request-approval
+name: an approved request is summarized and completed
+given:
+  task:
+    assignee: alice
+    customFields: {request: R-4}
+  principals: {reviewer: [alice, bob]}
+mocks:
+  skills:
+    request.summarize@1:
+      - output: {summary: request R-4}
+steps:
+  - approve: {decision: approved, by: bob}
+  - expect:
+      invokeSkill:
+        - {skill: request.summarize@1, inputs: {request: R-4}}
+      status: {category: terminal_success}

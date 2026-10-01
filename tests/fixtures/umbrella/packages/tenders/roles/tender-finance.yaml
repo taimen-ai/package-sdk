@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Роль пакета tenders: обеспечения и согласование цены по порогу.
+apiVersion: taimen.ai/v1
+kind: Role
+key: tender-finance
+spec:
+  name: Финансы
+  description: >-
+    Обеспечение заявки и исполнения контракта, их освобождение; согласование цены выше порога таблицы approval-thresholds

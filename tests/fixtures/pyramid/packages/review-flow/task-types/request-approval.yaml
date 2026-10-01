@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Одобрение вызывает скилл кода интеграции (request.summarize@1) и закрывает задачу;
+# отказ — комментарий.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: request-approval
+spec:
+  displayName: Request approval
+  description: A decision on a request
+  fieldSchema:
+    type: object
+    properties:
+      request: {type: string}
+      category: {type: string}
+      decision: {type: string}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema:
+    gates:
+      default:
+        outcomes:
+          approved:
+            - invokeSkill:
+                skill: request.summarize@1
+                inputs:
+                  request: $.task.customFields.request!
+                onSuccess:
+                  - completeTask: {}
+                onFailure:
+                  - comment: {body: "Summary failed for request $.task.customFields.request"}
+          rejected:
+            - comment: {body: "Request $.task.customFields.request rejected"}
+  acceptance:
+    - key: decided
+      kind: human
+      description: A person decided on the request

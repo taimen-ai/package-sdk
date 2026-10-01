@@ -1,0 +1,1088 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Участие в закупке по 44-ФЗ — от извещения в ЕИС до контракта (TAI-ADR-0054, план Р13;
+# FR-042…FR-046, FR-061). Исполняет ядро (CP-ADR-0074); источник — наблюдения
+# procurement.* коннектора eis-connector (integrations/eis: data наблюдения —
+# FeedEvent.to_dict(), у извещения — purchase в нормальной форме).
+#
+# Стадии (кейс): screening → decision (go/no-go) → analysis (документация и вопросы) →
+# pricing (цена и согласования) → preparation (заявка) → submission (подача человеком)
+# → results (протоколы) → contract (победа) | closing (проигрыш).
+# Сквозь стадии (onEvent): отмена заказчиком — компенсации и исход
+# cancelled-by-customer; приостановка (ФАС) — suspend, возобновление — resume;
+# изменение извещения (correlate) переписывает procurement — таймеры, читающие
+# сроки, пересчитываются сами.
+#
+# Сроки: законодательные — таблица deadlines-44fz (каждая строка — пункт 44-ФЗ),
+# внутренние — от окончания подачи заявок по производственному календарю ru
+# (cal.addWorkdays); человеческие шаги с эскалациями.
+#
+# Память (главное): дело на закупку (memory — заказчик, закупка, способ, ОКПД2,
+# документы); recall прошлых дел заказчика и уроков перед go/no-go и перед ценой —
+# ответ в данных, таблица go-no-go-advice читает его из данных; context у go/no-go,
+# цены и согласования; remember цен и итогов из протокола и победителя из контракта;
+# governedBy — регламент закупок организации (документ базы знаний
+# regulation:purchasing, пункты — по разделам ниже) и 44-ФЗ (law:44-fz) у строк
+# таблицы сроков; retrospective — уроки закрытого дела на подтверждение человеку.
+#
+# Подача заявки, протокол разногласий и подписание контракта — только человеком его
+# электронной подписью (FR-044): у платформы есть задача и детерминированная проверка
+# готовности, факт подтверждает ЕИС.
+apiVersion: taimen.ai/v1
+kind: Process
+key: tender
+spec:
+  version: 1
+  displayName: Участие в закупке (44-ФЗ)
+  description: >-
+    Закупка из ЕИС от извещения до контракта: отбор, решение об участии с памятью о
+    заказчике, анализ документации и вопросы, цена с согласованием по порогу и
+    разделением обязанностей, заявка и подача человеком, протоколы, контракт или
+    закрытие с разбором; отмена, приостановка и перенос сроков — сквозь стадии.
+  workspaceId: ${TENDERS_WORKSPACE_ID}
+  identity: {agent: tenders-process}
+  owner: [{role: tender-lead}]
+  calendar: ru
+  governedBy: [{document: "regulation:purchasing"}]
+  data: {$ref: ../schemas/tender.yaml}
+
+  start:
+    "on": {observation: procurement.notice_published, source: eis}
+    key: event.payload.data.purchaseNumber
+    set:
+      procurement: event.payload.data.purchase
+      documents: "has(event.payload.data.artifacts) ? event.payload.data.artifacts : []"
+
+  # Наблюдения о закупке доходят до экземпляра по ключу: без correlate событие чужого
+  # вида экземпляр не слышит (ни onEvent, ни listen).
+  correlate:
+    - "on": {observation: procurement.notice_changed, source: eis}
+      key: event.payload.data.purchaseNumber
+      set:
+        procurement: event.payload.data.purchase
+        changes: "has(event.payload.data.changes) ? event.payload.data.changes : {}"
+        documents: "has(event.payload.data.artifacts) ? event.payload.data.artifacts : data.documents"
+      do:
+        - id: legal-terms-changed
+          decide: {table: deadlines-44fz}
+          output: {as: {legal: step.result}}
+    - "on": {observation: procurement.clarification, source: eis}
+      key: event.payload.data.purchaseNumber
+    - "on": {observation: procurement.protocol, source: eis}
+      key: event.payload.data.purchaseNumber
+    - "on": {observation: procurement.cancelled, source: eis}
+      key: event.payload.data.purchaseNumber
+    - "on": {observation: procurement.suspended, source: eis}
+      key: event.payload.data.purchaseNumber
+    - "on": {observation: procurement.resumed, source: eis}
+      key: event.payload.data.purchaseNumber
+    - "on": {observation: procurement.contract, source: eis}
+      key: event.payload.data.purchaseNumber
+
+  memory:
+    case:
+      kind: case
+      key: "'tender:' + data.procurement.number"
+      title: "data.procurement.number + ' ' + data.procurement.object"
+    facts:
+      law: data.procurement.law
+      method: data.procurement.method.name
+      nmck: double(data.procurement.maxPrice.amount)
+      submissionEnd: string(data.procurement.deadlines.submissionEnd)
+      decision: data.decision.value
+      decisionReason: data.decision.reason
+      price: data.price.amount
+      priceApproval: data.priceApproval.outcome
+      won: data.result.won
+      winnerPrice: data.protocol.winnerPrice
+      participants: data.protocol.participants
+      lossReason: data.loss.reason
+      contractRegNum: data.contract.regNum
+    entities:
+      - {kind: legal_entity, key: data.procurement.customer.inn, name: data.procurement.customer.name, rel: customer}
+      - {kind: procurement, key: data.procurement.number, name: data.procurement.object, rel: concerns}
+      - {kind: procurement_method, key: data.procurement.method.code, name: data.procurement.method.name, rel: procured_by}
+      - {kind: okpd2_code, key: data.procurement.okpd2, many: true, rel: classified_as}
+    documents: {artifacts: [procurement-document]}
+
+  decisions:
+    # Законодательные сроки электронных процедур 44-ФЗ. Сверено 2026-09-28 по
+    # КонсультантПлюс, Федеральный закон от 05.04.2013 № 44-ФЗ в ред. от 04.08.2026:
+    # ст. 42 ч. 3 (сроки размещения извещения), ч. 5 (запрос разъяснений), ст. 48 ч. 1
+    # п. 3, ст. 49 ч. 5 п. 1, ст. 50 ч. 3 п. 1 (рассмотрение заявок), ст. 51 ч. 1–5
+    # (заключение контракта). Дни — календарные, если не сказано «рабочие».
+    # Строительство (порог 2 млрд ₽ у аукциона) не выделено: фильтры установки — ИТ
+    # (ОКПД2 62.*, 63.*). 223-ФЗ сроки задаёт положение заказчика — отдельная ветка
+    # таблицы следующей версией пакета (FR-045); пока — последняя строка known: false.
+    - id: deadlines-44fz
+      displayName: Сроки 44-ФЗ по способу закупки и НМЦК
+      hitPolicy: first
+      governedBy: [{document: "law:44-fz"}]
+      inputs:
+        - {id: law, expr: data.procurement.law, type: string}
+        - {id: method, expr: data.procurement.method.code, type: string}
+        - {id: nmck, expr: double(data.procurement.maxPrice.amount), type: number}
+      outputs:
+        - {id: known, type: boolean}
+        - {id: notice, type: number}
+        - {id: noticekind, type: string}
+        - {id: clarify, type: number}
+        - {id: review, type: number}
+        - {id: draft, type: number}
+        - {id: sign, type: number}
+        - {id: custreview, type: number}
+        - {id: custsign, type: number}
+        - {id: mincontract, type: number}
+        - {id: basis, type: string}
+      rules:
+        - when: {law: 44-FZ, method: "EAP20,EA20", nmck: "[0..300000000]"}
+          then: {known: true, notice: 7, noticekind: calendar, clarify: 3,
+                 review: 2, draft: 2, sign: 5, custreview: 2,
+                 custsign: 2, mincontract: 10,
+                 basis: "44-ФЗ ст. 42 ч. 3 п. 2 и ч. 5; ст. 49 ч. 5 п. 1; ст. 51 ч. 1–5"}
+          note: >-
+            Электронный аукцион, НМЦК не более 300 млн ₽: извещение не менее чем за 7 дней
+            до окончания подачи (ст. 42 ч. 3 п. 2); запрос разъяснений не позднее чем за 3
+            дня (ст. 42 ч. 5); рассмотрение — не позднее 2 рабочих дней (ст. 49 ч. 5 п. 1);
+            проект контракта — 2 рабочих дня, подписание победителем — 5 рабочих дней,
+            заказчиком — 2 рабочих дня, не ранее 10 дней после протокола (ст. 51 ч. 1–3, 5).
+            Коды способа EAP20/EA20 — по реальным извещениям 2025 (EAP20); EA20 — сверить.
+          governedBy:
+            - {document: "law:44-fz", section: "ст. 42 ч. 3 п. 2"}
+            - {document: "law:44-fz", section: "ст. 49 ч. 5 п. 1"}
+            - {document: "law:44-fz", section: "ст. 51"}
+        - when: {law: 44-FZ, method: "EAP20,EA20", nmck: "-"}
+          then: {known: true, notice: 15, noticekind: calendar, clarify: 3,
+                 review: 2, draft: 2, sign: 5, custreview: 2,
+                 custsign: 2, mincontract: 10,
+                 basis: "44-ФЗ ст. 42 ч. 3 п. 2 и ч. 5; ст. 49 ч. 5 п. 1; ст. 51 ч. 1–5"}
+          note: >-
+            Электронный аукцион, НМЦК более 300 млн ₽: извещение не менее чем за 15 дней
+            (ст. 42 ч. 3 п. 2); остальные сроки — как у строки выше.
+          governedBy:
+            - {document: "law:44-fz", section: "ст. 42 ч. 3 п. 2"}
+            - {document: "law:44-fz", section: "ст. 51"}
+        - when: {law: 44-FZ, method: "EOK20,EOKP20,OK20", nmck: "-"}
+          then: {known: true, notice: 15, noticekind: calendar, clarify: 3,
+                 review: 2, draft: 2, sign: 5, custreview: 2,
+                 custsign: 2, mincontract: 10,
+                 basis: "44-ФЗ ст. 42 ч. 3 п. 1 и ч. 5; ст. 48 ч. 1 п. 3; ст. 51 ч. 1–5"}
+          note: >-
+            Электронный конкурс: извещение не менее чем за 15 дней (ст. 42 ч. 3 п. 1);
+            рассмотрение первых частей — не позднее 2 рабочих дней (ст. 48 ч. 1 п. 3; для
+            НИОКР — 5, ч. 4), итоги — в даты извещения. Коды способа конкурса в ЕИС на
+            реальных документах не сверены — проверить на первом извещении.
+          governedBy:
+            - {document: "law:44-fz", section: "ст. 42 ч. 3 п. 1"}
+            - {document: "law:44-fz", section: "ст. 48 ч. 1 п. 3"}
+        - when: {law: 44-FZ, method: "EZK20,EZKP20,ZK20", nmck: "-"}
+          then: {known: true, notice: 4, noticekind: workdays, clarify: 3,
+                 review: 2, draft: 2, sign: 5, custreview: 2,
+                 custsign: 2, mincontract: 0,
+                 basis: "44-ФЗ ст. 42 ч. 3 п. 3 и ч. 5; ст. 50 ч. 3 п. 1; ст. 51"}
+          note: >-
+            Электронный запрос котировок: извещение не менее чем за 4 рабочих дня
+            (ст. 42 ч. 3 п. 3). Сомнения, сверить: срок рассмотрения (ст. 50 ч. 3 п. 1 —
+            по выдержке КонсультантПлюс 2 рабочих дня, в прежних редакциях — 1 рабочий
+            день), применяется ли 10-дневный запрет ст. 51 ч. 1 к запросу котировок
+            (поставлено 0 — не применяется), коды способа в ЕИС.
+          governedBy:
+            - {document: "law:44-fz", section: "ст. 42 ч. 3 п. 3"}
+            - {document: "law:44-fz", section: "ст. 50 ч. 3 п. 1"}
+        - when: {law: "-", method: "-", nmck: "-"}
+          then: {known: false, notice: 0, noticekind: none, clarify: 0,
+                 review: 0, draft: 0, sign: 0, custreview: 0,
+                 custsign: 0, mincontract: 0,
+                 basis: "закон или способ закупки без строки таблицы"}
+          note: >-
+            223-ФЗ (сроки — положение о закупке заказчика) и способы 44-ФЗ без строки:
+            закупка отсеивается на отборе. Ветка 223-ФЗ — следующая версия пакета (FR-045).
+
+    # Порог НМЦК → кто согласует цену заявки. Значения — разумные по умолчанию, их задаёт
+    # регламент закупок организации (п. 4.2): организация меняет строку таблицы в своей
+    # версии пакета (package-sdk edit add-decision-row / set), а регламент и таблицу сверяет
+    # правило regulation-drift пакета process-knowledge.
+    - id: approval-thresholds
+      displayName: Порог НМЦК — уровень согласования цены
+      hitPolicy: first
+      governedBy: [{document: "regulation:purchasing", section: "4.2"}]
+      inputs:
+        - {id: nmck, expr: double(data.procurement.maxPrice.amount), type: number}
+      outputs:
+        - {id: level, type: string}
+        - {id: primary, type: string}
+        - {id: secondary, type: string}
+      rules:
+        - when: {nmck: "[0..3000000)"}
+          then: {level: lead, primary: tender-lead, secondary: ""}
+          note: До 3 млн ₽ — руководитель тендерного отдела (не автор расчёта). Настраивается.
+        - when: {nmck: "[3000000..30000000)"}
+          then: {level: finance, primary: tender-finance, secondary: ""}
+          note: От 3 до 30 млн ₽ — финансы. Настраивается.
+        - when: {nmck: "-"}
+          then: {level: director, primary: tender-finance, secondary: general-director}
+          note: От 30 млн ₽ — финансы и генеральный директор, оба. Настраивается.
+
+    # Подсказка к go/no-go из памяти: читает только данные — ответ recall-history уже в
+    # data.history (TAI-ADR-0054 Р16: память попадает в таблицы через recall).
+    - id: go-no-go-advice
+      displayName: Что память говорит о заказчике
+      hitPolicy: first
+      inputs:
+        - {id: lessons, expr: "double(size(data.history.filter(n, n.kind == 'lesson')))", type: number}
+        - {id: cases, expr: "double(size(data.history.filter(n, n.kind == 'case')))", type: number}
+      outputs:
+        - {id: level, type: string}
+        - {id: note, type: string}
+      rules:
+        - when: {lessons: "[1..1000000)", cases: "-"}
+          then: {level: lessons, note: "Есть уроки прошлых дел этого заказчика — прочитайте их в контексте задачи"}
+        - when: {lessons: "-", cases: "[1..1000000)"}
+          then: {level: known-customer, note: "С заказчиком уже были дела — исходы и цены в контексте задачи"}
+        - when: {lessons: "-", cases: "-"}
+          then: {level: new-customer, note: "Прошлых дел с заказчиком нет"}
+
+  stages:
+    - id: screening
+      displayName: Отбор
+      governedBy: [{document: "regulation:purchasing", section: "2"}]
+      steps:
+        - id: legal-terms
+          decide: {table: deadlines-44fz}
+          output: {as: {legal: step.result}}
+        - id: check-fit
+          set:
+            screening.skip: >-
+              !data.legal.known
+              || cal.workdaysBetween(instance.clock, data.procurement.deadlines.submissionEnd) < 3
+            screening.reason: >-
+              !data.legal.known ? data.legal.basis
+              : (cal.workdaysBetween(instance.clock, data.procurement.deadlines.submissionEnd) < 3
+                 ? 'до окончания подачи меньше трёх рабочих дней' : '')
+        - id: screened-out
+          when: data.screening.skip
+          complete: {outcome: screened-out}
+        - id: recall-history
+          displayName: Прошлые дела заказчика и уроки
+          recall:
+            anchors: [{kind: legal_entity, key: data.procurement.customer.inn}]
+            traverse:
+              - {relation: customer, direction: in, depth: 1, limit: 30}
+              - {relation: applies_to, direction: in, depth: 1, limit: 20, from: anchors}
+            kinds: [case, lesson]
+            query: "'закупки заказчика ' + data.procurement.customer.name + ': ' + data.procurement.object"
+            limit: 50
+            timeout: PT2M
+            onTimeout: [{id: no-history, set: {history: "[]"}}]
+          output: {as: {history: step.result.nodes}}
+        - id: advice
+          decide: {table: go-no-go-advice}
+          output: {as: {advice: step.result}}
+        # Первичный анализ со знанием компании (TAI-ADR-0056 Р9, FR-014…FR-021):
+        # что память знает о компании, позиции ↔ номенклатура, требования к участнику,
+        # кто исполняет. ИИ-часть повторяется, детерминированная готова сразу.
+        - id: recall-company
+          displayName: Что знаем о компании
+          recall:
+            anchors: [{kind: legal_entity, key: "'${TENDERS_COMPANY_INN}'"}]
+            traverse:
+              - {relation: held_by, direction: in, depth: 1, limit: 100}
+              - {relation: party_to, direction: out, depth: 1, limit: 200, from: anchors}
+            kinds: [legal_entity, credential, agreement, engagement]
+            limit: 100
+            timeout: PT2M
+            onTimeout: [{id: no-company, set: {company: "{}"}}]
+          output: {as: {company: step.result}}
+        - id: recall-roles
+          displayName: Подразделения, роли и профили работ
+          recall:
+            anchors: [{kind: legal_entity, key: "'${TENDERS_COMPANY_INN}'"}]
+            traverse:
+              - {relation: unit_of, direction: in, depth: 3, limit: 100}
+              - {relation: belongs_to, direction: in, depth: 1, limit: 100, from: previous}
+              - {relation: performs, direction: out, depth: 1, limit: 100, from: previous}
+            kinds: [org_unit, role, capability]
+            limit: 100
+            timeout: PT2M
+            onTimeout: [{id: no-roles, set: {roles: "{}"}}]
+          output: {as: {roles: step.result}}
+        - id: recall-offerings
+          displayName: Предложения компании под объект закупки
+          recall:
+            anchors: [{kind: legal_entity, key: "'${TENDERS_COMPANY_INN}'"}]
+            query: "data.procurement.object"
+            kinds: [offering, product_registry_entry, capability]
+            limit: 100
+            timeout: PT2M
+            onTimeout: [{id: no-offerings, set: {offerings: "{}"}}]
+          output: {as: {offerings: step.result}}
+        - id: match-items
+          try:
+            do:
+              - id: match
+                displayName: Позиции и номенклатура
+                call:
+                  skill: tender.match_items@1
+                  input:
+                    items: "has(data.procurement.items) ? data.procurement.items : []"
+                    company: data.company
+                    roles: data.roles
+                    offerings: data.offerings
+                  timeout: PT1H
+                output: {as: {match: step.result}}
+            catch:
+              - do: [{id: match-unavailable, set: {match: "{'status': 'unavailable', 'executor': {}, 'aiPending': false}"}}]
+        - id: check-requirements
+          try:
+            do:
+              - id: check
+                displayName: Требования к участнику
+                call:
+                  skill: tender.check_requirements@1
+                  input:
+                    purchase: data.procurement
+                    company: data.company
+                    matches: data.match
+                    documents: data.documents
+                    asOf: string(instance.clock)
+                  timeout: PT1H
+                output: {as: {checks: step.result}}
+            catch:
+              - do: [{id: checks-unavailable, set: {checks: "{'status': 'unavailable', 'blockers': [], 'aiPending': false}"}}]
+        - id: ai-retry
+          displayName: Повтор ИИ-части анализа
+          when: "data.match.aiPending || data.checks.aiPending"
+          try:
+            do:
+              - id: match-ai
+                call:
+                  skill: tender.match_items@1
+                  input:
+                    items: "has(data.procurement.items) ? data.procurement.items : []"
+                    company: data.company
+                    roles: data.roles
+                    offerings: data.offerings
+                    requireAi: "true"
+                  timeout: PT1H
+                output: {as: {match: step.result}}
+              - id: check-ai
+                call:
+                  skill: tender.check_requirements@1
+                  input:
+                    purchase: data.procurement
+                    company: data.company
+                    matches: data.match
+                    documents: data.documents
+                    asOf: string(instance.clock)
+                    requireAi: "true"
+                  timeout: PT1H
+                output: {as: {checks: step.result}}
+            retry: {limit: 3, delay: PT15M, backoff: exponential}
+            catch:
+              - do: [{id: ai-still-unavailable, set: {analysisNote: "'ИИ недоступен: неизменяемые характеристики и документация — неизвестно, нужен человек'"}}]
+        - id: assign-unit
+          displayName: Кто исполняет
+          set:
+            executorRole: "has(data.match.executor.role) ? data.match.executor.role : 'tender-lead'"
+
+    - id: decision
+      displayName: Go / no-go
+      entry: stage.screening.completed
+      governedBy: [{document: "regulation:purchasing", section: "3"}]
+      steps:
+        - id: analyze-docs
+          try:
+            do:
+              - id: analyze
+                displayName: Анализ документации и рекомендация
+                call:
+                  skill: tender.analyze_docs@2
+                  input:
+                    purchase: data.procurement
+                    documents: data.documents
+                    history: data.history
+                    company: data.company
+                    matches: data.match
+                    checks: data.checks
+                    asOf: string(instance.clock)
+                  timeout: PT4H
+                output: {as: {analysis: step.result}}
+            catch:
+              - do: [{id: analysis-unavailable, set: {analysis.status: "'unavailable'"}}]
+        - id: analyze-ai-retry
+          when: "has(data.analysis.aiPending) && data.analysis.aiPending"
+          try:
+            do:
+              - id: analyze-ai
+                call:
+                  skill: tender.analyze_docs@2
+                  input:
+                    purchase: data.procurement
+                    documents: data.documents
+                    history: data.history
+                    company: data.company
+                    matches: data.match
+                    checks: data.checks
+                    asOf: string(instance.clock)
+                    requireAi: "true"
+                  timeout: PT4H
+                output: {as: {analysis: step.result}}
+            retry: {limit: 3, delay: PT15M, backoff: exponential}
+            catch:
+              - do: [{id: analyze-still-unavailable, set: {analysisNote: "'ИИ недоступен: рекомендация — по детерминированной части'"}}]
+        - id: remember-analysis
+          remember:
+            facts:
+              coverage: "has(data.match.coverage) ? data.match.coverage.sumShare : ''"
+              blockers: "has(data.checks.blockers) ? data.checks.blockers : []"
+              recommendation: "has(data.analysis.recommendation) ? data.analysis.recommendation.decision : ''"
+        - id: go-no-go
+          displayName: Участвовать?
+          input:
+            from: >-
+              {'analysis': data.analysis, 'advice': data.advice, 'match': data.match,
+               'checks': data.checks, 'executorRole': data.executorRole,
+               'nmck': data.procurement.maxPrice.amount, 'url': data.procurement.url}
+          human:
+            taskType: tender-go-no-go
+            title: "'Участвовать в закупке ' + data.procurement.number + ': ' + data.procurement.object"
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-go-no-go"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/decision", options: {format: radio}}
+                  - {type: Control, scope: "#/properties/reason", options: {multi: true}}
+            assign: [{role: tender-lead}]
+            due:
+              at: >-
+                cal.addWorkdays(data.procurement.deadlines.submissionEnd, -5) > instance.clock
+                ? cal.addWorkdays(data.procurement.deadlines.submissionEnd, -5)
+                : cal.addWorkdays(instance.clock, 1)
+            escalations:
+              - {after: due, action: remind}
+              - {after: P1D, action: notify, to: [{role: general-director}]}
+            context:
+              anchors:
+                - {case: true}
+                - {kind: legal_entity, key: data.procurement.customer.inn}
+              traverse:
+                - {relation: customer, direction: in, depth: 1, limit: 20}
+                - {relation: applies_to, direction: in, depth: 1, limit: 20, from: anchors}
+              budgetTokens: 6000
+          output:
+            as:
+              decision.value: step.result.decision
+              decision.reason: step.result.reason
+              decision.by: task.assigneeId
+        - id: declined
+          when: data.decision.value != 'go'
+          complete: {outcome: declined}
+
+    - id: analysis
+      displayName: Анализ документации и вопросы заказчику
+      entry: stage.decision.completed
+      governedBy: [{document: "regulation:purchasing", section: "3.3"}]
+      steps:
+        - id: legal-review
+          displayName: Юридический анализ
+          input: {from: "{'analysis': data.analysis}"}
+          human:
+            taskType: tender-legal-review
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-legal-review"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/questionsNeeded"}
+                  - {type: Control, scope: "#/properties/questions",
+                     rule: {effect: SHOW, condition: {scope: "#/properties/questionsNeeded", schema: {const: true}}}}
+                  - {type: Control, scope: "#/properties/legalRisks", options: {multi: true}}
+            assign: [{role: tender-lawyer}]
+            due:
+              at: >-
+                cal.addWorkdays(data.procurement.deadlines.submissionEnd
+                - duration(string(int(data.legal.clarify) * 24) + 'h'), -1)
+            escalations:
+              - {after: due, action: notify, to: [{role: tender-lead}]}
+          output:
+            as:
+              clarification.needed: step.result.questionsNeeded
+              clarification.questions: "has(step.result.questions) ? step.result.questions : []"
+        - id: ask-customer
+          displayName: Запрос разъяснений
+          when: data.clarification.needed
+          input: {from: "{'questions': data.clarification.questions}"}
+          human:
+            taskType: tender-clarification-request
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-clarification-request"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/requestNumber"}
+            assign: [{role: tender-lawyer}]
+            due:
+              at: >-
+                data.procurement.deadlines.submissionEnd
+                - duration(string(int(data.legal.clarify) * 24) + 'h')
+          output: {as: {clarification.requestNumber: step.result.requestNumber}}
+        - id: await-answer
+          displayName: Ответ заказчика
+          when: data.clarification.needed
+          listen:
+            any:
+              - "on": {observation: procurement.clarification, source: eis}
+                do:
+                  - id: store-answer
+                    set:
+                      clarification.answered: "true"
+                      clarification.answer: >-
+                        has(event.payload.data.details.answer)
+                        ? string(event.payload.data.details.answer) : ''
+            timeout: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -1)"}
+            onTimeout: [{id: no-answer, set: {clarification.answered: "false"}}]
+
+    - id: pricing
+      displayName: Цена и согласования
+      entry: stage.analysis.completed
+      governedBy: [{document: "regulation:purchasing", section: "4"}]
+      steps:
+        - id: recall-prices
+          displayName: Цены прошлых закупок
+          recall:
+            anchors:
+              - {kind: legal_entity, key: data.procurement.customer.inn}
+              - {kind: okpd2_code, key: "size(data.procurement.okpd2) > 0 ? data.procurement.okpd2[0] : ''"}
+            traverse:
+              - {relation: customer, direction: in, depth: 1, limit: 30}
+              - {relation: classified_as, direction: in, depth: 1, limit: 30, from: anchors}
+              - {relation: applies_to, direction: in, depth: 1, limit: 20, from: anchors}
+            kinds: [case, lesson]
+            query: "'цены и итоги закупок: ' + data.procurement.object"
+            limit: 50
+            timeout: PT2M
+            onTimeout: [{id: no-price-history, set: {priceHistory: "[]"}}]
+          output: {as: {priceHistory: step.result.nodes}}
+        - id: price-round
+          displayName: Расчёт и согласование цены
+          try:
+            retry: {limit: 2, "on": [price-rejected]}
+            do:
+              - id: calculate-price
+                displayName: Расчёт цены
+                input:
+                  from: >-
+                    {'nmck': data.procurement.maxPrice.amount, 'analysis': data.analysis,
+                     'priceHistory': data.priceHistory}
+                human:
+                  taskType: tender-price-calculation
+                  form:
+                    schema: {description: "Поля — fieldSchema типа tender-price-calculation"}
+                    uischema:
+                      type: VerticalLayout
+                      elements:
+                        - {type: HorizontalLayout, elements: [{type: Control, scope: "#/properties/amount"},
+                                                              {type: Control, scope: "#/properties/margin"}]}
+                        - {type: Control, scope: "#/properties/rationale", options: {multi: true}}
+                  assign: [{role: tender-lead}]
+                  due: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -3)"}
+                  escalations:
+                    - {after: due, action: notify, to: [{role: general-director}]}
+                  context:
+                    anchors:
+                      - {case: true}
+                      - {kind: legal_entity, key: data.procurement.customer.inn}
+                    traverse:
+                      - {relation: customer, direction: in, depth: 1, limit: 20}
+                      - {relation: applies_to, direction: in, depth: 1, limit: 20, from: anchors}
+                    budgetTokens: 6000
+                output:
+                  as:
+                    price.amount: step.result.amount
+                    price.margin: "has(step.result.margin) ? step.result.margin : 0.0"
+                    price.rationale: step.result.rationale
+                    price.preparedBy: task.assigneeId
+              - id: approval-level
+                decide: {table: approval-thresholds}
+                output: {as: {approval: step.result}}
+              - id: approve-price
+                displayName: Согласование цены
+                approve:
+                  taskType: tender-price-approval
+                  approvers:
+                    - {expr: "'role:' + data.approval.primary"}
+                    - {expr: "data.approval.secondary == '' ? '' : 'role:' + data.approval.secondary"}
+                  mode: parallel
+                  quorum: all
+                  separationOfDuties: "[data.price.preparedBy]"
+                  due: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -2)"}
+                  onDue: escalate
+                  escalations:
+                    - {after: due, action: notify, to: [{role: general-director}]}
+                  context:
+                    anchors: [{case: true}, {kind: legal_entity, key: data.procurement.customer.inn}]
+                    traverse: [{relation: customer, direction: in, depth: 1, limit: 20}]
+                output:
+                  as:
+                    priceApproval.outcome: step.result.outcome
+                    priceApproval.approvedBy: step.result.approvedBy
+                    priceApproval.rejectedBy: step.result.rejectedBy
+                # Отзыв согласований при отмене закупки (compensate): согласование снимается
+                # в данных дела и в памяти.
+                onCompensate:
+                  - {id: revoke-approval, set: {priceApproval.revoked: "true"}}
+                  - id: remember-revoked
+                    remember: {facts: {priceApprovalRevoked: "true", revokedReason: data.cancellation.reason}}
+              - id: price-rejected
+                when: data.priceApproval.outcome != 'approved'
+                raise: {type: price-rejected, detail: "'цена не согласована: ' + data.approval.level"}
+            catch:
+              - errors: {type: price-rejected}
+                do: [{id: price-not-approved, complete: {outcome: price-not-approved}}]
+
+    - id: preparation
+      displayName: Подготовка заявки
+      entry: stage.pricing.completed
+      governedBy: [{document: "regulation:purchasing", section: "5"}]
+      steps:
+        - id: prepare
+          fork:
+            branches:
+              - id: documents-branch
+                do:
+                  - id: prepare-documents
+                    displayName: Документы заявки
+                    input: {from: "{'requirements': has(data.checks.checks) ? data.checks.checks : []}"}
+                    human:
+                      taskType: tender-application
+                      form:
+                        schema: {description: "Поля — fieldSchema типа tender-application"}
+                        uischema:
+                          type: VerticalLayout
+                          elements:
+                            - {type: Control, scope: "#/properties/documents"}
+                            - {type: Control, scope: "#/properties/declarationsConfirmed"}
+                      # исполнитель — роль подразделения по профилю работ (FR-018)
+                      assign: [{expr: "'role:' + data.executorRole"}, {role: tender-lead}]
+                      due: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -1)"}
+                      escalations:
+                        - {after: due, action: notify, to: [{role: general-director}]}
+                    output:
+                      as:
+                        application.documents: step.result.documents
+                        application.declarationsConfirmed: step.result.declarationsConfirmed
+              - id: guarantee-branch
+                do:
+                  - id: application-guarantee
+                    displayName: Обеспечение заявки
+                    when: has(data.procurement.applicationGuarantee.amount)
+                    input: {from: "{'amount': data.procurement.applicationGuarantee.amount}"}
+                    human:
+                      taskType: tender-guarantee
+                      form:
+                        schema: {description: "Поля — fieldSchema типа tender-guarantee"}
+                        uischema:
+                          type: VerticalLayout
+                          elements:
+                            - {type: Control, scope: "#/properties/provided"}
+                            - {type: Control, scope: "#/properties/form"}
+                            - {type: Control, scope: "#/properties/reference"}
+                      assign: [{role: tender-finance}]
+                      due: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -2)"}
+                      escalations:
+                        - {after: due, action: notify, to: [{role: general-director}]}
+                    output: {as: {application.guaranteeProvided: step.result.provided}}
+                    # Освободить обеспечение заявки при отмене закупки — задача финансам.
+                    # Внутри onCompensate step — запись компенсируемого шага (его result),
+                    # поэтому ответ задачи читается из task.customFields.
+                    onCompensate:
+                      - id: release-application-guarantee
+                        displayName: Освободить обеспечение заявки
+                        human:
+                          taskType: tender-guarantee-release
+                          title: "'Освободить обеспечение заявки: закупка ' + data.procurement.number + ' отменена'"
+                          assign: [{role: tender-finance}]
+                          due: {at: "cal.addWorkdays(instance.clock, 3)"}
+                        output: {as: {release.applicationGuarantee: task.customFields.released}}
+        # Готовность к подаче — детерминированно (сценарий 7): какая проверка не прошла,
+        # видно в data.application.checks; задача «подать» не появляется, пока не готово.
+        # Повтор проверки после исправления — retry блока try (цикла «пока» в языке нет).
+        - id: readiness
+          try:
+            retry: {limit: 3, "on": [not-ready]}
+            do:
+              - id: check-readiness
+                set:
+                  application.checks.documents: >-
+                    has(data.application.documents) && size(data.application.documents) > 0
+                    && data.application.declarationsConfirmed == true
+                  application.checks.approval: data.priceApproval.outcome == 'approved'
+                  application.checks.guarantee: >-
+                    !has(data.procurement.applicationGuarantee.amount)
+                    || data.application.guaranteeProvided == true
+                  application.checks.deadline: instance.clock < data.procurement.deadlines.submissionEnd
+              - id: ready
+                set:
+                  application.ready: >-
+                    data.application.checks.documents && data.application.checks.approval
+                    && data.application.checks.guarantee && data.application.checks.deadline
+              - id: fix-readiness
+                displayName: Устранить неготовность
+                when: "!data.application.ready && data.application.checks.deadline"
+                input: {from: "{'checks': data.application.checks}"}
+                human:
+                  taskType: tender-readiness-fix
+                  assign: [{role: tender-lead}]
+                  due: {at: "data.procurement.deadlines.submissionEnd"}
+                output:
+                  as:
+                    application.documents: >-
+                      has(step.result.documents) ? step.result.documents : data.application.documents
+                    application.declarationsConfirmed: >-
+                      has(step.result.declarationsConfirmed) ? step.result.declarationsConfirmed
+                      : data.application.declarationsConfirmed
+                    application.guaranteeProvided: >-
+                      has(step.result.guaranteeProvided) ? step.result.guaranteeProvided
+                      : data.application.guaranteeProvided
+              - id: not-ready
+                when: "!data.application.ready"
+                raise: {type: not-ready, detail: "'заявка не готова к подаче'"}
+            catch:
+              - errors: {type: not-ready}
+                do: [{id: not-submitted, complete: {outcome: not-submitted}}]
+
+    - id: submission
+      displayName: Подача
+      entry: stage.preparation.completed && data.application.ready
+      governedBy: [{document: "regulation:purchasing", section: "5.4"}]
+      steps:
+        - id: submit
+          displayName: Подать заявку
+          input:
+            from: >-
+              {'documents': data.application.documents, 'price': data.price.amount,
+               'platform': data.procurement.platform.name, 'url': data.procurement.url}
+          human:
+            taskType: tender-submit
+            title: "'Подать заявку своей ЭП: ' + data.procurement.number"
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-submit"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/signedWithOwnSignature"}
+                  - {type: Control, scope: "#/properties/applicationNumber"}
+                  - {type: Control, scope: "#/properties/submittedAt"}
+            assign: [{role: tender-lead}]
+            due: {at: "cal.addWorkdays(data.procurement.deadlines.submissionEnd, -1)"}
+            escalations:
+              - {after: due, action: remind}
+              - {after: PT4H, action: notify, to: [{role: general-director}]}
+          output:
+            as:
+              submission.applicationNumber: step.result.applicationNumber
+              submission.submittedAt: step.result.submittedAt
+              submission.by: task.assigneeId
+      timers:
+        - id: submission-deadline
+          at: {at: data.procurement.deadlines.submissionEnd}
+          interrupting: true
+          do: [{id: missed-deadline, complete: {outcome: missed-deadline}}]
+
+    - id: results
+      displayName: Ожидание протоколов
+      entry: stage.submission.completed
+      steps:
+        # Ожидание — длительность, а не дата из данных: на время приостановки (ФАС) она
+        # замораживается и после возобновления сдвигается на длительность приостановки.
+        - id: await-results
+          displayName: Протокол итогов
+          listen:
+            any:
+              - "on":
+                  observation: procurement.protocol
+                  source: eis
+                  where: event.payload.data.details.protocolKind == 'results'
+                do:
+                  - id: store-protocol
+                    set:
+                      protocol.date: >-
+                        has(event.payload.data.details.protocolDate)
+                        ? timestamp(event.payload.data.details.protocolDate) : event.time
+                      protocol.winnerApplication: >-
+                        has(event.payload.data.details.winner)
+                        ? string(event.payload.data.details.winner.applicationNumber) : ''
+                      protocol.winnerPrice: >-
+                        has(event.payload.data.details.winner)
+                        ? double(event.payload.data.details.winner.price) : 0.0
+                      protocol.participants: >-
+                        has(event.payload.data.details.applications)
+                        ? double(size(event.payload.data.details.applications)) : 0.0
+                      result.won: >-
+                        has(event.payload.data.details.winner)
+                        && string(event.payload.data.details.winner.applicationNumber)
+                           == data.submission.applicationNumber
+            timeout: P30D
+            onTimeout:
+              - id: check-results
+                displayName: Проверить итоги вручную
+                human:
+                  taskType: tender-results-check
+                  form:
+                    schema: {description: "Поля — fieldSchema типа tender-results-check"}
+                    uischema:
+                      type: VerticalLayout
+                      elements:
+                        - {type: Control, scope: "#/properties/won"}
+                        - {type: Control, scope: "#/properties/winnerPrice"}
+                        - {type: Control, scope: "#/properties/protocolDate"}
+                  assign: [{role: tender-lead}]
+                  due: {at: "cal.addWorkdays(instance.clock, 2)"}
+                output:
+                  as:
+                    result.won: step.result.won
+                    protocol.winnerPrice: "has(step.result.winnerPrice) ? step.result.winnerPrice : 0.0"
+                    protocol.date: "has(step.result.protocolDate) ? step.result.protocolDate : instance.clock"
+        - id: remember-results
+          displayName: Цены и итог в память
+          remember:
+            facts:
+              won: data.result.won
+              ourPrice: data.price.amount
+              winnerPrice: data.protocol.winnerPrice
+              participants: data.protocol.participants
+              protocolDate: string(data.protocol.date)
+
+    - id: contract
+      displayName: Контракт
+      entry: stage.results.completed && data.result.won
+      governedBy: [{document: "regulation:purchasing", section: "6"}, {document: "law:44-fz", section: "ст. 51"}]
+      steps:
+        # Обеспечение исполнения и проверка проекта контракта — параллельно.
+        - id: contract-preparation
+          fork:
+            branches:
+              - id: contract-guarantee-branch
+                do:
+                  - id: contract-guarantee
+                    displayName: Обеспечение исполнения контракта
+                    when: has(data.procurement.contractGuarantee.amount)
+                    input: {from: "{'amount': data.procurement.contractGuarantee.amount}"}
+                    human:
+                      taskType: tender-contract-guarantee
+                      form:
+                        schema: {description: "Поля — fieldSchema типа tender-contract-guarantee"}
+                        uischema:
+                          type: VerticalLayout
+                          elements:
+                            - {type: Control, scope: "#/properties/provided"}
+                            - {type: Control, scope: "#/properties/form"}
+                            - {type: Control, scope: "#/properties/reference"}
+                      assign: [{role: tender-finance}]
+                      due:
+                        at: >-
+                          cal.addWorkdays(data.protocol.date,
+                          int(data.legal.draft + data.legal.sign) - 1)
+                      escalations:
+                        - {after: due, action: notify, to: [{role: general-director}]}
+                    output: {as: {contract.guaranteeProvided: step.result.provided}}
+                    onCompensate:
+                      - id: release-contract-guarantee
+                        displayName: Освободить обеспечение исполнения
+                        human:
+                          taskType: tender-guarantee-release
+                          title: "'Освободить обеспечение исполнения: закупка ' + data.procurement.number + ' отменена'"
+                          assign: [{role: tender-finance}]
+                          due: {at: "cal.addWorkdays(instance.clock, 3)"}
+                        output: {as: {release.contractGuarantee: task.customFields.released}}
+              - id: draft-branch
+                do:
+                  - id: review-draft
+                    displayName: Проект контракта
+                    human:
+                      taskType: tender-contract-review
+                      form:
+                        schema: {description: "Поля — fieldSchema типа tender-contract-review"}
+                        uischema:
+                          type: VerticalLayout
+                          elements:
+                            - {type: Control, scope: "#/properties/disagreements"}
+                            - {type: Control, scope: "#/properties/points", options: {multi: true}}
+                      assign: [{role: tender-lawyer}]
+                      due:
+                        at: >-
+                          cal.addWorkdays(data.protocol.date,
+                          int(data.legal.draft + data.legal.sign) - 2)
+                    output:
+                      as:
+                        contract.disagreements: step.result.disagreements
+                        contract.disagreementPoints: "has(step.result.points) ? step.result.points : ''"
+                  - id: disagreements
+                    displayName: Протокол разногласий
+                    when: data.contract.disagreements
+                    input: {from: "{'points': data.contract.disagreementPoints}"}
+                    human:
+                      taskType: tender-disagreements
+                      assign: [{role: tender-lead}]
+                      due:
+                        at: >-
+                          cal.addWorkdays(data.protocol.date,
+                          int(data.legal.draft + data.legal.sign))
+                    output: {as: {contract.disagreementsPlaced: step.result.placed}}
+        - id: sign-contract
+          displayName: Подписать контракт
+          human:
+            taskType: tender-contract-sign
+            title: "'Подписать контракт своей ЭП: закупка ' + data.procurement.number"
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-contract-sign"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/signedWithOwnSignature"}
+                  - {type: Control, scope: "#/properties/signedAt"}
+            assign: [{role: general-director}]
+            due:
+              at: >-
+                cal.addWorkdays(data.protocol.date,
+                int(data.legal.draft + data.legal.sign
+                    + (data.contract.disagreements ? data.legal.custreview + 1.0 : 0.0)))
+            escalations:
+              - {after: due, action: notify, to: [{role: tender-lead}]}
+          output:
+            as:
+              contract.signedAt: step.result.signedAt
+              contract.signedBy: task.assigneeId
+        - id: await-contract
+          displayName: Контракт в реестре ЕИС
+          listen:
+            any:
+              - "on": {observation: procurement.contract, source: eis}
+                do:
+                  - id: store-contract
+                    set:
+                      contract.regNum: >-
+                        has(event.payload.data.details.contractRegNum)
+                        ? string(event.payload.data.details.contractRegNum) : ''
+                      contract.price: >-
+                        has(event.payload.data.details.price)
+                        ? double(event.payload.data.details.price) : data.price.amount
+                      contract.confirmed: "true"
+            timeout: P20D
+            onTimeout: [{id: contract-unconfirmed, set: {contract.confirmed: "false"}}]
+        - id: remember-contract
+          remember:
+            facts:
+              contractRegNum: data.contract.regNum
+              contractPrice: data.contract.price
+              contractConfirmed: data.contract.confirmed
+        - id: contract-signed
+          complete: {outcome: contract-signed}
+
+    - id: closing
+      displayName: Закрытие
+      entry: stage.results.completed && !data.result.won
+      governedBy: [{document: "regulation:purchasing", section: "7"}]
+      steps:
+        - id: loss-review
+          displayName: Разбор проигрыша
+          input: {from: "{'ourPrice': data.price.amount, 'winnerPrice': data.protocol.winnerPrice}"}
+          human:
+            taskType: tender-loss-review
+            form:
+              schema: {description: "Поля — fieldSchema типа tender-loss-review"}
+              uischema:
+                type: VerticalLayout
+                elements:
+                  - {type: Control, scope: "#/properties/reason"}
+                  - {type: Control, scope: "#/properties/comment", options: {multi: true}}
+            assign: [{role: tender-lead}]
+            due: {at: "cal.addWorkdays(instance.clock, 3)"}
+          output:
+            as:
+              loss.reason: step.result.reason
+              loss.comment: "has(step.result.comment) ? step.result.comment : ''"
+        - id: remember-loss
+          remember:
+            facts:
+              lossReason: data.loss.reason
+              priceGap: data.price.amount - data.protocol.winnerPrice
+        # Протоколы анонимны: победителя называет контракт в реестре ЕИС.
+        - id: learn-winner
+          displayName: Победитель из реестра контрактов
+          listen:
+            any:
+              - "on": {observation: procurement.contract, source: eis}
+                do:
+                  - id: store-winner
+                    set:
+                      winner.inn: >-
+                        has(event.payload.data.details.supplier)
+                        && has(event.payload.data.details.supplier.inn)
+                        ? string(event.payload.data.details.supplier.inn) : ''
+                      winner.name: >-
+                        has(event.payload.data.details.supplier)
+                        && has(event.payload.data.details.supplier.name)
+                        ? string(event.payload.data.details.supplier.name) : ''
+                      winner.price: >-
+                        has(event.payload.data.details.price)
+                        ? double(event.payload.data.details.price) : data.protocol.winnerPrice
+                  - id: remember-winner
+                    when: data.winner.inn != ''
+                    remember:
+                      entity:
+                        kind: legal_entity
+                        key: data.winner.inn
+                        name: data.winner.name
+                        text: "'Победитель закупки ' + data.procurement.number + ' по цене ' + string(data.winner.price)"
+                        links: [{rel: won, kind: case, key: "'tender:' + data.procurement.number"}]
+            timeout: P60D
+        - id: lost
+          complete: {outcome: lost}
+
+  onEvent:
+    # Отмена заказчиком (сценарий 7): работа стадий останавливается (suspend — иначе
+    # открытые шаги шли бы параллельно компенсациям с ожиданием человека), сделанное
+    # откатывается в обратном порядке (отзыв согласования цены, задачи финансам
+    # освободить обеспечения) и дело закрывается с исходом.
+    - "on": {observation: procurement.cancelled, source: eis}
+      do:
+        - id: note-cancellation
+          set:
+            cancellation.reason: >-
+              has(event.payload.data.details.reason) ? string(event.payload.data.details.reason) : ''
+            cancellation.at: string(event.time)
+        - id: hold-work
+          suspend: {reason: "'закупка отменена заказчиком: компенсации'"}
+        - id: undo
+          compensate: all
+        - id: cancelled
+          complete: {outcome: cancelled-by-customer}
+    # Приостановка (жалоба в ФАС, предписание): таймеры стадий замораживаются.
+    - "on": {observation: procurement.suspended, source: eis}
+      do:
+        - id: note-suspension
+          set:
+            suspension.active: "true"
+            suspension.reason: >-
+              has(event.payload.data.details.reason) ? string(event.payload.data.details.reason) : ''
+            suspension.complaintNumber: >-
+              has(event.payload.data.details.complaintNumber)
+              ? string(event.payload.data.details.complaintNumber) : ''
+            suspension.since: string(event.time)
+        - id: pause
+          suspend: {reason: "'закупка приостановлена: ' + data.suspension.reason"}
+    - "on": {observation: procurement.resumed, source: eis}
+      do:
+        - id: note-resume
+          set:
+            suspension.active: "false"
+            suspension.resumedAt: string(event.time)
+        - id: unpause
+          resume: {reason: "'закупка возобновлена'"}
+
+  retrospective:
+    taskType: lessons-review
+    assign: [{role: tender-lead}]
+    appliesTo: [legal_entity, okpd2_code]
+    when: data.decision.value == 'go'

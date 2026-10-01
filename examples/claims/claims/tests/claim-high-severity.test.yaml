@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+# A high-severity claim goes straight to a manager; a replacement closes as replaced.
+process: claim
+name: a high-severity claim is reviewed by a manager and closed as replaced
+given:
+  principals:
+    claims-officer: [alice]
+    claims-manager: [bob]
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: defect, severity: high, confidence: 0.95}
+steps:
+  - emit:
+      observation: helpdesk.ticket_created
+      payload:
+        data: {ticketId: T-1004, customerId: C-7, customerName: Northwind Ltd, product: Heater H3,
+               subject: Sparks from the heater, text: The heater sparked and smells of smoke., amount: 80, currency: EUR}
+  - expect:
+      data: {reviewRole: claims-manager, routeNote: "High severity: a manager reviews it"}
+      tasks: [{step: review-claim, assignee: "role:claims-manager"}]
+  - complete:
+      step: review-claim
+      by: bob
+      output: {resolution: replacement, refundAmount: 0, reply: We replace the heater.}
+  - complete:
+      step: send-reply
+      by: bob
+      output: {ticketId: T-1004, message: We replace the heater.}
+  - expect: {status: completed, outcome: replaced}

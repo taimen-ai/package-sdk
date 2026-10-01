@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Отбор (FR-045): закупка по 223-ФЗ — строки таблицы сроков нет (сроки задаёт
+# положение заказчика, ветка — следующей версией пакета), дело закрывается на отборе
+# без задач людям; память не спрашивается.
+process: tender
+name: 223-ФЗ отсеивается на отборе
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "32600000001"
+          purchase:
+            number: "32600000001"
+            law: 223-FZ
+            method: {code: ZK, name: Запрос котировок}
+            customer: {name: АО «Тест», inn: "7700000006"}
+            object: Разработка ПО
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "5000000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+  - expect:
+      status: completed
+      outcome: screened-out
+      data: {legal.known: false, screening.skip: true, screening.reason: закон или способ закупки без строки таблицы}
+      noSideEffects: true

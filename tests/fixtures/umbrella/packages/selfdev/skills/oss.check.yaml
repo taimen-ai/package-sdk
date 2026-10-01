@@ -1,0 +1,154 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: oss.check
+spec:
+  version: '2'
+  description: Какие релизы компонентов можно опубликовать в открытой поставке
+  sideEffects: external_read
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - superproject
+      additionalProperties: false
+      properties:
+        superproject:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        components:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          maxItems: 50
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - ready
+      - current
+      - failing
+      properties:
+        ref:
+          type: string
+        ready:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - component
+            - sha
+            - release
+            - repository
+            - mirror
+            - umbrella
+            - umbrellaBranch
+            - superproject
+            properties:
+              component:
+                type: string
+              sha:
+                type: string
+              release:
+                type: string
+              pinned:
+                type: string
+              repository:
+                type: string
+              mirror:
+                type: string
+              umbrella:
+                type: string
+              umbrellaBranch:
+                type: string
+              superproject:
+                type: string
+        current:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - component
+            - sha
+            properties:
+              component:
+                type: string
+              sha:
+                type: string
+              release:
+                type: string
+              pinned:
+                type: string
+              reason:
+                enum:
+                - no_release
+        failing:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - component
+            - sha
+            - reason
+            - findings
+            properties:
+              component:
+                type: string
+              sha:
+                type: string
+              release:
+                type: string
+              pinned:
+                type: string
+              reason:
+                enum:
+                - not_pinned
+                - not_fast_forward
+                - not_on_trunk
+                - not_publishable
+                - release_tag_conflict
+                - mirror_is_repository
+                - check_unavailable
+              findings:
+                type: array
+                maxItems: 50
+                items:
+                  type: object
+                  required:
+                  - check
+                  properties:
+                    check:
+                      type: string
+                    path:
+                      type:
+                      - string
+                      - 'null'
+                    line:
+                      type:
+                      - integer
+                      - 'null'
+                    rule:
+                      type:
+                      - integer
+                      - 'null'
+              details:
+                type: string
+    idempotency: none
+    timeoutSeconds: 900
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 60
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.oss_sync:invoke_check

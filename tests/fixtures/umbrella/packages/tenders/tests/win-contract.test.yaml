@@ -1,0 +1,158 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Весь путь победы (SC-002, сценарии 4–8): извещение → отбор → go/no-go → юрист и
+# вопрос заказчику → цена и согласование → заявка и обеспечение → подача человеком →
+# протокол итогов с победой → контракт (обеспечение, проект, подписание) → контракт в
+# реестре ЕИС. Время виртуальное: тест идёт недели за миллисекунды.
+process: tender
+name: победа — от извещения до контракта
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {step: recall-history, output: {nodes: []}}
+    - step: recall-prices
+      output:
+        nodes:
+          - {kind: case, key: "tender:0000000000025000007", title: "Сопровождение ИС учёта", attributes: {winnerPrice: 1900000}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: Разработка ИС, НМЦК 2,5 млн ₽
+          risks: [{text: "Штраф 10% за просрочку", severity: high, quote: "штраф 10%"}]
+          blockers: []
+          questions: ["Допускается ли свободное ПО?"]
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        source: eis
+        externalRef: {system: eis, id: "0000000000026000001"}
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000001"
+          law: 44-FZ
+          purchase:
+            number: "0000000000026000001"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001", regionCode: "77"}
+            object: Разработка информационной системы учёта обращений
+            okpd2: ["62.01.11.000", "62.02.30.000"]
+            maxPrice: {amount: "2500000.00", currency: RUB}
+            deadlines: {published: "2026-10-01T09:00:00+03:00", submissionEnd: "2026-10-19T09:00:00+03:00"}
+            applicationGuarantee: {amount: "25000.00", partPercent: "1"}
+            contractGuarantee: {amount: "250000.00", partPercent: "10"}
+            platform: {code: ETP_TEST, name: Тестовая электронная площадка}
+  # отбор: строка таблицы сроков, память о заказчике, подсказка
+  - expect:
+      stages: {screening: completed, decision: open}
+      data: {legal.known: true, legal.notice: 7, legal.sign: 5, screening.skip: false, advice.level: new-customer,
+             analysis.status: ok}
+      memory: {recalled: [recall-history, recall-company, recall-roles, recall-offerings]}
+      # срок go/no-go — за 5 рабочих дней до окончания подачи по календарю ru
+      tasks: [{step: go-no-go, assignee: alice, status: open, due: "2026-10-12T09:00:00+03:00"}]
+      timers: [{id: go-no-go, at: "2026-10-12T09:00:00+03:00"}]
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: профиль и цена подходят}}
+  # юрист: вопрос заказчику не позднее чем за 3 дня до окончания подачи
+  - expect:
+      stages: {decision: completed, analysis: open}
+      tasks: [{step: legal-review, assignee: lena, due: "2026-10-15T09:00:00+03:00"}]
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: true, questions: ["Допускается ли свободное ПО?"]}}
+  - expect: {tasks: [{step: ask-customer, assignee: lena, due: "2026-10-16T09:00:00+03:00"}]}
+  - complete: {step: ask-customer, by: lena, output: {requestNumber: "Z-17"}}
+  - advance: P2D
+  - emit:
+      observation: procurement.clarification
+      source: eis
+      payload:
+        kind: procurement.clarification
+        data: {kind: clarification, purchaseNumber: "0000000000026000001",
+               details: {subject: documentation, question: "Допускается ли свободное ПО?", answer: Допускается}}
+  # цена: память о ценах, расчёт, согласование по порогу
+  - expect:
+      stages: {analysis: completed, pricing: open}
+      data: {clarification.answered: true, clarification.answer: Допускается}
+      memory: {recalled: [recall-history, recall-company, recall-roles, recall-offerings, recall-prices]}
+      tasks: [{step: calculate-price, assignee: alice}]
+  - complete: {step: calculate-price, by: alice, output: {amount: 2300000, margin: 18, rationale: себестоимость и цены заказчика}}
+  - expect: {data: {approval.level: lead, price.preparedBy: alice}}
+  - approve: {step: approve-price, by: bob, decision: approve}
+  # заявка и обеспечение — параллельно
+  - expect:
+      stages: {pricing: completed, preparation: open}
+      tasks: [{step: prepare-documents, assignee: alice}, {step: application-guarantee, assignee: fin}]
+  - complete: {step: prepare-documents, by: alice, output: {documents: [декларация, предложение], declarationsConfirmed: true}}
+  - complete: {step: application-guarantee, by: fin, output: {provided: true, form: special-account}}
+  # подача — только человек своей ЭП; готовность проверена детерминированно
+  - expect:
+      stages: {preparation: completed, submission: open}
+      data: {application.ready: true, application.checks.guarantee: true}
+      tasks: [{step: submit, assignee: alice, due: "2026-10-16T09:00:00+03:00"}]
+      timers: [{id: submission-deadline, at: "2026-10-19T09:00:00+03:00"}]
+  - complete: {step: submit, by: alice, output: {signedWithOwnSignature: true, applicationNumber: "115000001",
+                                                 submittedAt: "2026-10-05T12:00:00+03:00"}}
+  - expect: {stages: {submission: completed, results: open}}
+  - advance: P17D
+  # протокол рассмотрения — не итог: ожидание продолжается
+  - emit:
+      observation: procurement.protocol
+      source: eis
+      payload:
+        kind: procurement.protocol
+        data: {kind: protocol, purchaseNumber: "0000000000026000001", details: {protocolKind: review}}
+  - expect: {stages: {results: open}}
+  - emit:
+      observation: procurement.protocol
+      source: eis
+      payload:
+        kind: procurement.protocol
+        data:
+          kind: protocol
+          purchaseNumber: "0000000000026000001"
+          details:
+            protocolKind: results
+            protocolDate: "2026-10-21T00:00:00+03:00"
+            applications:
+              - {number: "115000001", price: "2100000.00", rating: 1, admitted: true}
+              - {number: "115000002", price: "2150000.00", rating: 2, admitted: true}
+            winner: {applicationNumber: "115000001", price: "2100000.00"}
+  # победа: контракт со сроками от даты протокола (ст. 51 44-ФЗ)
+  - expect:
+      stages: {results: completed, contract: open}
+      data: {result.won: true, protocol.winnerPrice: 2100000, protocol.participants: 2}
+      memory: {remembered: [{facts: {won: true, winnerPrice: 2100000, ourPrice: 2300000}}]}
+      tasks:
+        - {step: contract-guarantee, assignee: fin, due: "2026-10-29T00:00:00+03:00"}
+        - {step: review-draft, assignee: lena, due: "2026-10-28T00:00:00+03:00"}
+  - complete: {step: contract-guarantee, by: fin, output: {provided: true, form: bank-guarantee}}
+  - complete: {step: review-draft, by: lena, output: {disagreements: false}}
+  - expect: {tasks: [{step: sign-contract, assignee: gd, due: "2026-10-30T00:00:00+03:00"}]}
+  - complete: {step: sign-contract, by: gd, output: {signedWithOwnSignature: true, signedAt: "2026-10-27T10:00:00+03:00"}}
+  - emit:
+      observation: procurement.contract
+      source: eis
+      payload:
+        kind: procurement.contract
+        data:
+          kind: contract
+          purchaseNumber: "0000000000026000001"
+          details: {contractRegNum: "3770000000126000001", price: "2100000.00",
+                    supplier: {kind: legal_entity, inn: "7700000002", name: ООО «Интегратор»}}
+  - expect:
+      status: completed
+      outcome: contract-signed
+      data: {contract.confirmed: true, contract.regNum: "3770000000126000001", contract.signedBy: gd}
+      memory: {remembered: [{facts: {contractRegNum: "3770000000126000001"}}]}
+      noSideEffects: true

@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: taskType
+taskType: claim-reply
+name: a rejected reply is not sent and stays a draft
+given:
+  task:
+    assignee: alice
+    customFields: {ticketId: T-1001, message: No.}
+  principals: {claims-officer: [alice, bob]}
+steps:
+  - approve: {decision: rejected, by: bob, comment: Too short}
+  - expect:
+      invokeSkill: []
+      status: {category: active}

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# Установка каталога по умолчанию (TAI-ADR-0044 п.5): новая инсталляция,
+# make bootstrap. Своё окружение — свой файл и bootstrap.py --packages <файл>.
+# Ядро доменно-нейтрально: новая инсталляция получает только системный тип
+# task; доменные типы (саморазработка — selfdev, sdd) ставятся явно.
+apiVersion: taimen.ai/v1
+kind: Installation
+key: default
+spec:
+  packages: [platform-services]

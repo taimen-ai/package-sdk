@@ -1,0 +1,10 @@
+subject: taskType
+taskType: refund-approval
+name: an approved refund replies to the customer and closes the task
+given:
+  task: {customFields: {amount: 72000, ticketId: T-1}}
+steps:
+  - approve: {gate: default, decision: approved}
+  - expect:
+      invokeSkill: [{skill: helpdesk.reply@1, inputs: {ticketId: T-1}}]
+      status: {category: terminal_success}

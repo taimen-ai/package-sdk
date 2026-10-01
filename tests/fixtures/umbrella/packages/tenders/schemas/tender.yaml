@@ -1,0 +1,287 @@
+# Данные экземпляра процесса tender (JSON Schema, CP-ADR-0075 §2: типы выражений CEL
+# берутся отсюда). procurement — нормальная форма закупки интеграции ЕИС
+# (integrations/eis, Purchase.to_dict(): суммы — строки десятичной записи, моменты —
+# ISO 8601); остальное пишет процесс своими шагами. Необъявленное поле выражение не
+# читает (ошибка проверки), а в данных оно сохраняется как пришло.
+#
+# Персональных данных здесь нет: ЕИС не отдаёт ФИО в нормальную форму, а исполнители
+# шагов — id principal'ов (MEM-ADR-002). В память уходит только проекция memory.
+type: object
+required: [procurement]
+properties:
+  procurement:
+    type: object
+    description: Закупка — нормальная форма ЕИС (последняя версия извещения)
+    properties:
+      number: {type: string, description: Реестровый номер закупки — ключ экземпляра}
+      law: {type: string, description: "44-FZ; 223-FZ — следующей версией пакета"}
+      method:
+        type: object
+        properties:
+          code: {type: string, description: "Код способа ЕИС (placingWay), например EAP20"}
+          name: {type: string}
+      customer:
+        type: object
+        properties:
+          name: {type: string}
+          shortName: {type: string}
+          inn: {type: string}
+          kpp: {type: string}
+          regNum: {type: string}
+          regionCode: {type: string}
+      object: {type: string, description: Объект закупки}
+      okpd2: {type: array, items: {type: string}}
+      maxPrice:
+        type: object
+        properties:
+          amount: {type: string, description: "НМЦК, строка десятичной записи"}
+          currency: {type: string}
+      deadlines:
+        type: object
+        properties:
+          published: {type: string}
+          submissionStart: {type: string}
+          submissionEnd: {type: string, format: date-time, description: Окончание подачи заявок — от него считаются сроки}
+          review: {type: string}
+          bidding: {type: string}
+          results: {type: string}
+      applicationGuarantee:
+        type: object
+        properties:
+          amount: {type: string}
+          partPercent: {type: string}
+      contractGuarantee:
+        type: object
+        properties:
+          amount: {type: string}
+          partPercent: {type: string}
+      platform:
+        type: object
+        properties:
+          code: {type: string}
+          name: {type: string}
+          url: {type: string}
+      url: {type: string}
+      documents: {type: array, items: {type: object}}
+      lots: {type: array, items: {type: object}}
+      items: {type: array, items: {type: object}, description: "Позиции объекта закупки (TAI-ADR-0056 Р10)"}
+      requirements: {type: array, items: {type: object}, description: "Требования к участнику — коды справочника ЕИС"}
+      preferences: {type: array, items: {type: object}}
+      restrictions: {type: array, items: {type: object}}
+      contractTerm:
+        type: object
+        properties:
+          start: {type: string}
+          end: {type: string, description: Окончание исполнения контракта}
+      version: {type: integer}
+      schemeVersion: {type: string}
+      history: {type: array, items: {type: object}}
+  changes:
+    type: object
+    description: "Что поменяло последнее изменение извещения: {deadlines: {<поле>: {old, new}}, maxPrice}"
+  legal:
+    type: object
+    description: Законодательные сроки закупки — строка таблицы deadlines-44fz
+    properties:
+      # Имена — id выходов таблицы (строчные: id элемента процесса не допускает camelCase)
+      known: {type: boolean, description: Есть строка таблицы для закона и способа}
+      notice: {type: number, description: Минимум дней между извещением и окончанием подачи}
+      noticekind: {type: string, description: "calendar | workdays — какие дни в notice"}
+      clarify: {type: number, description: За сколько дней до окончания подачи — последний запрос разъяснений}
+      review: {type: number, description: Рабочих дней на рассмотрение заявок}
+      draft: {type: number, description: Рабочих дней заказчику на проект контракта после протокола}
+      sign: {type: number, description: Рабочих дней победителю на подписание (или протокол разногласий)}
+      custreview: {type: number, description: Рабочих дней заказчику на протокол разногласий}
+      custsign: {type: number, description: Рабочих дней заказчику на подписание}
+      mincontract: {type: number, description: Не ранее скольких дней после протокола заключается контракт}
+      basis: {type: string, description: Пункты 44-ФЗ строки}
+  screening:
+    type: object
+    properties:
+      skip: {type: boolean}
+      reason: {type: string}
+  history:
+    type: array
+    description: Прошлые дела заказчика и уроки — ответ памяти (recall-history)
+    items: {type: object}
+  advice:
+    type: object
+    description: Подсказка к go/no-go по истории заказчика — строка таблицы go-no-go-advice
+    properties:
+      level: {type: string}
+      note: {type: string}
+  documents:
+    type: array
+    description: "Артефакты документов закупки коннектора ЕИС — {id, fileName, content}"
+    items: {type: object}
+  company:
+    type: object
+    description: "Что память знает о компании — ответ recall-company {nodes, edges}"
+  roles:
+    type: object
+    description: "Подразделения, роли и их профили работ — ответ recall-roles"
+  offerings:
+    type: object
+    description: "Предложения компании, похожие на объект закупки — ответ recall-offerings"
+  match:
+    type: object
+    description: Сопоставление позиций — выход tender.match_items@1
+    properties:
+      status: {type: string}
+      summary: {type: string}
+      aiPending: {type: boolean}
+      coverage:
+        type: object
+        properties:
+          count: {type: number}
+          total: {type: number}
+          sumShare: {type: string}
+      executor:
+        type: object
+        properties:
+          role: {type: string}
+          capability: {type: string}
+          unit: {type: string}
+      items: {type: array, items: {type: object}}
+  checks:
+    type: object
+    description: Требования к участнику — выход tender.check_requirements@1
+    properties:
+      status: {type: string}
+      summary: {type: string}
+      aiPending: {type: boolean}
+      checks: {type: array, items: {type: object}}
+      blockers: {type: array, items: {type: string}}
+      warnings: {type: array, items: {type: string}}
+  analysisNote: {type: string, description: "ИИ-часть анализа так и не выполнилась — что осталось человеку"}
+  executorRole: {type: string, description: "Роль исполнителя по профилю работ (FR-018); запасная — tender-lead"}
+  analysis:
+    type: object
+    description: Анализ документации — выход tender.analyze_docs@2
+    properties:
+      status: {type: string}
+      summary: {type: string}
+      aiPending: {type: boolean}
+      risks: {type: array, items: {type: object}}
+      blockers: {type: array, items: {type: string}}
+      questions: {type: array, items: {type: string}}
+      documentsRead: {type: number}
+      recommendation:
+        type: object
+        properties:
+          decision: {type: string, description: "go | no_go | needs_review — решает человек"}
+          rationale: {type: string}
+  decision:
+    type: object
+    properties:
+      value: {type: string, description: go | no-go}
+      reason: {type: string}
+      by: {type: string}
+  clarification:
+    type: object
+    properties:
+      needed: {type: boolean}
+      questions: {type: array, items: {type: string}}
+      requestNumber: {type: string}
+      answered: {type: boolean}
+      answer: {type: string}
+  priceHistory:
+    type: array
+    description: Цены и итоги прошлых дел заказчика и того же ОКПД2 — ответ памяти (recall-prices)
+    items: {type: object}
+  price:
+    type: object
+    properties:
+      amount: {type: number}
+      margin: {type: number}
+      rationale: {type: string}
+      preparedBy: {type: string, description: Кто подготовил расчёт — ему согласовывать нельзя}
+  approval:
+    type: object
+    description: Кто согласует цену — строка таблицы approval-thresholds
+    properties:
+      level: {type: string}
+      primary: {type: string}
+      secondary: {type: string}
+  priceApproval:
+    type: object
+    properties:
+      outcome: {type: string}
+      approvedBy: {type: array, items: {type: string}}
+      rejectedBy: {type: array, items: {type: string}}
+      revoked: {type: boolean}
+  application:
+    type: object
+    properties:
+      documents: {type: array, items: {type: string}}
+      declarationsConfirmed: {type: boolean}
+      guaranteeProvided: {type: boolean}
+      ready: {type: boolean}
+      checks:
+        type: object
+        description: Детерминированная проверка готовности к подаче — какая не прошла, видно здесь
+        properties:
+          documents: {type: boolean}
+          approval: {type: boolean}
+          guarantee: {type: boolean}
+          deadline: {type: boolean}
+  submission:
+    type: object
+    properties:
+      applicationNumber: {type: string, description: Номер заявки на площадке — по нему узнаётся победа в протоколе}
+      submittedAt: {type: string}
+      by: {type: string}
+  protocol:
+    type: object
+    properties:
+      date: {type: string, format: date-time}
+      winnerApplication: {type: string}
+      winnerPrice: {type: number}
+      participants: {type: number}
+  result:
+    type: object
+    properties:
+      won: {type: boolean}
+  contract:
+    type: object
+    properties:
+      guaranteeProvided: {type: boolean}
+      disagreements: {type: boolean}
+      disagreementPoints: {type: string}
+      disagreementsPlaced: {type: boolean}
+      signedAt: {type: string}
+      signedBy: {type: string}
+      regNum: {type: string}
+      price: {type: number}
+      confirmed: {type: boolean}
+  winner:
+    type: object
+    description: Победитель проигранной закупки — из контракта в ЕИС (протоколы анонимны)
+    properties:
+      inn: {type: string}
+      name: {type: string}
+      price: {type: number}
+  loss:
+    type: object
+    properties:
+      reason: {type: string}
+      comment: {type: string}
+  suspension:
+    type: object
+    properties:
+      active: {type: boolean}
+      reason: {type: string}
+      complaintNumber: {type: string}
+      since: {type: string}
+      resumedAt: {type: string}
+  cancellation:
+    type: object
+    properties:
+      reason: {type: string}
+      at: {type: string}
+  release:
+    type: object
+    description: Освобождение обеспечений при отмене — компенсации
+    properties:
+      applicationGuarantee: {type: boolean}
+      contractGuarantee: {type: boolean}

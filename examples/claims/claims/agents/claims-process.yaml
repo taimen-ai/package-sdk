@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The identity of the process `claim`: every intent of a case — its tasks, approvals,
+# skill calls and memory records — is made with the authority of this principal.
+# - events.read — the observation that starts a case;
+# - tasks.read, tasks.write — the review and the reply tasks;
+# - approvals.manage — the refund approval;
+# - skills.invoke — the classification;
+# - observations.write — the case and the decision in memory.
+# It cannot decide approvals: people of the role do.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: claims-process
+spec:
+  displayName: Claims process
+  description: Identity of the process claim
+  identity:
+    kind: service
+    permissions: [events.read, tasks.read, tasks.write, approvals.manage, skills.invoke, observations.write]
+    iam:
+      audiences: [control-plane]
+      scopeCeiling: [control-plane:read, control-plane:write]
+  placement: none

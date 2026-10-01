@@ -1,0 +1,96 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Приостановка по жалобе в ФАС и возобновление (сценарий 8, приёмка 2): заявка подана,
+# процесс ждёт протокол итогов 30 дней. Приостановка замораживает ожидание,
+# возобновление продолжает его с того же места — срок сдвигается ровно на длительность
+# приостановки (5 дней). Протокол не пришёл — итоги проверяет человек.
+process: tender
+name: приостановка ФАС и возобновление — сроки сдвинуты на длительность
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000007"
+          purchase:
+            number: "0000000000026000007"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Техподдержка ИС
+            okpd2: ["62.02.30.000"]
+            maxPrice: {amount: "1200000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: да}}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: false}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 1100000, rationale: расчёт}}
+  - approve: {step: approve-price, by: bob, decision: approve}
+  - complete: {step: prepare-documents, by: alice, output: {documents: [предложение], declarationsConfirmed: true}}
+  - complete: {step: submit, by: alice, output: {signedWithOwnSignature: true, applicationNumber: "300000001",
+                                                 submittedAt: "2026-10-01T12:00:00+03:00"}}
+  - expect:
+      stages: {results: open}
+      timers: [{id: await-results, at: "2026-10-31T09:00:00+03:00"}]
+  - advance: P2D
+  - emit:
+      observation: procurement.suspended
+      source: eis
+      payload:
+        kind: procurement.suspended
+        data: {kind: suspended, purchaseNumber: "0000000000026000007",
+               details: {reason: Жалоба участника закупки принята к рассмотрению, complaintNumber: "202600000000001"}}
+  - expect:
+      status: suspended
+      events: [process.suspended]
+      data: {suspension.active: true, suspension.complaintNumber: "202600000000001"}
+  # пока приостановлено, срок ожидания не идёт
+  - advance: P5D
+  - expect: {status: suspended}
+  - emit:
+      observation: procurement.resumed
+      source: eis
+      payload:
+        kind: procurement.resumed
+        data: {kind: resumed, purchaseNumber: "0000000000026000007", details: {action: RESUME}}
+  - expect:
+      status: running
+      events: [process.resumed, process.timer_rescheduled]
+      data: {suspension.active: false}
+      timers: [{id: await-results, at: "2026-11-05T09:00:00+03:00"}]
+  - advance: until:await-results
+  - expect: {tasks: [{step: check-results, assignee: alice, status: open}]}
+  - complete: {step: check-results, by: alice, output: {won: false, winnerPrice: 1000000,
+                                                        protocolDate: "2026-11-02T00:00:00+03:00"}}
+  - complete: {step: loss-review, by: alice, output: {reason: price}}
+  # контракт с поставщиком без ИНН в наблюдении — победитель в память не пишется
+  - emit:
+      observation: procurement.contract
+      source: eis
+      payload:
+        kind: procurement.contract
+        data: {kind: contract, purchaseNumber: "0000000000026000007", details: {price: "1000000.00"}}
+  - expect: {status: completed, outcome: lost, data: {winner.inn: "", winner.price: 1000000}}

@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Process
+key: request-intake
+spec:
+  version: 1
+  displayName: Request intake
+  identity: {agent: request-intake-process}
+  owner: [{role: reviewer}]
+  data:
+    type: object
+    properties:
+      request: {type: string}
+      category: {type: string}
+      decision: {type: string}
+  start:
+    on: {observation: request.submitted}
+    key: event.payload.id
+    set: {request: event.payload.id}
+  stages:
+    - id: review
+      steps:
+        - id: classify
+          call:
+            skill: request.classify@1
+            input: {text: data.request}
+          output: {as: {category: step.result.category}}
+        - id: approve-request
+          human:
+            taskType: request-approval
+            assign: [{role: reviewer}]
+          output: {as: {decision: step.result.decision}}
+        - id: close
+          complete: {outcome: reviewed}

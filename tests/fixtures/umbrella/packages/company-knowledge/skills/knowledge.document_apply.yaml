@@ -1,0 +1,146 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.document_apply
+spec:
+  version: '1'
+  description: Записать подтверждённые человеком поля документа снимком источника
+  sideEffects: external_write
+  riskLevel: medium
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Link:
+          properties:
+            rel:
+              pattern: ^[a-z][a-z0-9_]{0,63}$
+              title: Rel
+              type: string
+            kind:
+              pattern: ^[a-z][a-z0-9_]{0,63}$
+              title: Kind
+              type: string
+            key:
+              maxLength: 512
+              minLength: 1
+              title: Key
+              type: string
+          required:
+          - rel
+          - kind
+          - key
+          title: Link
+          type: object
+      properties:
+        documentKey:
+          maxLength: 512
+          minLength: 1
+          title: Documentkey
+          type: string
+        workspaceId:
+          minLength: 1
+          title: Workspaceid
+          type: string
+        pack:
+          title: Pack
+          type: string
+        kind:
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          title: Kind
+          type: string
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Profile
+        packs:
+          items:
+            type: string
+          title: Packs
+          type: array
+        definitions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+        key:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          description: Ключ сущности; иначе — из атрибутов
+          title: Key
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Title
+        attributes:
+          additionalProperties: true
+          title: Attributes
+          type: object
+        links:
+          items:
+            $ref: '#/$defs/Link'
+          title: Links
+          type: array
+      required:
+      - documentKey
+      - workspaceId
+      - pack
+      - kind
+      - attributes
+      title: ApplyIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Counts:
+          properties:
+            opened:
+              default: 0
+              title: Opened
+              type: integer
+            changed:
+              default: 0
+              title: Changed
+              type: integer
+            closed:
+              default: 0
+              title: Closed
+              type: integer
+            unchanged:
+              default: 0
+              title: Unchanged
+              type: integer
+          title: Counts
+          type: object
+      properties:
+        status:
+          const: applied
+          title: Status
+          type: string
+        key:
+          title: Key
+          type: string
+        counts:
+          $ref: '#/$defs/Counts'
+      required:
+      - status
+      - key
+      - counts
+      title: ApplyOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 120
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.document_skills:document_apply

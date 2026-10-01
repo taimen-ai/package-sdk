@@ -1,0 +1,51 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+process: tender
+name: отказ от участия на go/no-go
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: "Разработка ИС"
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        source: eis
+        externalRef: {system: eis, id: "0000000000026000001"}
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000001"
+          law: 44-FZ
+          purchase:
+            number: "0000000000026000001"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка информационной системы учёта обращений
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "2500000.00", currency: RUB}
+            deadlines: {published: "2026-10-01T09:00:00+03:00", submissionEnd: "2026-10-19T09:00:00+03:00"}
+  - expect:
+      stages: {screening: completed, decision: open}
+      tasks: [{step: go-no-go, assignee: alice, status: open}]
+  - complete: {step: go-no-go, by: alice, output: {decision: no-go, reason: не наш профиль}}
+  - expect: {status: completed, outcome: declined, noSideEffects: true}

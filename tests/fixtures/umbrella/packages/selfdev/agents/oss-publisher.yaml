@@ -1,0 +1,57 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Исполнитель скиллов открытой поставки (oss.*, TAI-ADR-0043): токен публикации — только у него.
+# Агент описанием (TAI-ADR-0052): личность, работа, исполнитель, рабочая копия и
+# размещение; запускает платформа на узле fleet.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: oss-publisher
+spec:
+  displayName: OSS publisher (skills)
+  identity:
+    kind: agent
+    permissions:
+    - approvals.manage
+    - approvals.read
+    - artifacts.read
+    - artifacts.write
+    - claims.manage
+    - events.read
+    - goals.read
+    - goals.write
+    - observations.write
+    - projects.read
+    - rules.read
+    - sessions.open
+    - skills.execute
+    # вызов oss.publish@2 по execution типа oss-publish — POST /skills/{ref}:invoke
+    - skills.invoke
+    - task_types.read
+    - tasks.claim
+    - tasks.read
+    - tasks.write
+    - workspaces.read
+  work:
+    workspace: ${SELFDEV_WORKSPACE_ID}
+    onlyAssigned: true
+  executor:
+    kind: skills
+  skills:
+    protocols:
+    - local
+    local:
+    - taimen_selfdev.oss_sync:invoke_check
+    - taimen_selfdev.oss_sync:invoke_publish
+    # oss-publish исполняется вызовом oss.publish@2 через ядро (execution типа):
+    # реестр агентов назначает скилл principal'у агента (CP-ADR-0073, амендмент 2026-09-28)
+    invoke:
+    - oss.publish@2
+  placement:
+    requires:
+    - repos
+    secrets:
+    - oss-github-token
+    resources:
+      cpus: 1
+      memoryMb: 1024
+    drainSeconds: 14400
+  state: running

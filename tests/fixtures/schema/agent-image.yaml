@@ -1,0 +1,13 @@
+apiVersion: taimen.ai/v1
+kind: Agent
+key: helpdesk-observer
+spec:
+  displayName: Helpdesk observer
+  identity: {kind: agent, permissions: [observations.write]}
+  work: {workspace: "${CLAIMS_WORKSPACE_ID}"}
+  executor:
+    kind: observer
+    image: registry.example.com/acme/claims-observer:0.3.0
+    params: {entrypoint: "acme_claims.observer:observe", intervalSeconds: 60}
+  placement: {requires: [helpdesk-access], secrets: [helpdesk-token]}
+  state: running

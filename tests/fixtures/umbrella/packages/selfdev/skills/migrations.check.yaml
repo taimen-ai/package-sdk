@@ -1,0 +1,112 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: migrations.check
+spec:
+  version: '1'
+  description: 'Проверить цепочки миграций alembic: головы, корни, разрывы, дубли'
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        repo:
+          type: string
+          minLength: 1
+          maxLength: 100
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - chains
+      - gaps
+      - failing
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - ok
+          - broken
+        chains:
+          type: array
+          items:
+            type: object
+        gaps:
+          type: array
+          items:
+            type: object
+            required:
+            - kind
+            - repo
+            - path
+            - revision
+            - detail
+            properties:
+              kind:
+                enum:
+                - multiple_heads
+                - multiple_roots
+                - missing_parent
+                - duplicate_revision
+                - irreversible
+              repo:
+                type: string
+              path:
+                type: string
+              revision:
+                type: string
+              detail:
+                type: string
+        failing:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - repo
+            - path
+            - kinds
+            - heads
+            - text
+            properties:
+              repo:
+                type: string
+              path:
+                type: string
+              kinds:
+                type: array
+                items:
+                  enum:
+                  - multiple_heads
+                  - multiple_roots
+                  - missing_parent
+                  - duplicate_revision
+              heads:
+                type: array
+                items:
+                  type: string
+              text:
+                type: string
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.migrations_check:invoke

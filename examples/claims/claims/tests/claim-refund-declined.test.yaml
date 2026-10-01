@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+# The manager rejects a large refund: the claim is rejected with the standard reply.
+process: claim
+name: a rejected refund turns the claim into a rejection with a standard reply
+given:
+  principals:
+    claims-officer: [alice]
+    claims-manager: [bob]
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: delivery, severity: low, confidence: 0.7}
+steps:
+  - emit:
+      observation: helpdesk.ticket_created
+      payload:
+        data: {ticketId: T-1003, customerId: C-9, customerName: Fabrikam, product: Kettle K1,
+               subject: Late delivery, text: It came two weeks late., amount: 900, currency: EUR}
+  - complete:
+      step: review-claim
+      by: alice
+      output: {resolution: refund, refundAmount: 900, reply: We refund the kettle.}
+  - approve: {step: approve-refund, by: bob, decision: reject}
+  - expect:
+      data:
+        approval: rejected
+        resolution: rejection
+        refundAmount: 0
+        reply: "We reviewed your claim about Kettle K1. We cannot refund it; our claims team will contact you with other options."
+      stages: {reply: open}
+  - complete:
+      step: send-reply
+      by: alice
+      output: {ticketId: T-1003, message: We cannot refund the kettle.}
+  - expect: {status: completed, outcome: rejected}

@@ -1,0 +1,66 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: feature.design_check
+spec:
+  version: '1'
+  description: Проверить дизайн фичи (spec.md и plan.md в specs/<slug>/) перед воротами
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      - slug
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+        constitution:
+          type: string
+          minLength: 1
+          maxLength: 300
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - gaps
+      - text
+      - stats
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - ok
+          - gaps
+        gaps:
+          type: array
+          items:
+            type: object
+        text:
+          type: string
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.sdd_checks:invoke_design

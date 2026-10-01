@@ -1,0 +1,252 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Оплата счёта поставщика на языке процессов (TAI-ADR-0054, SC-007): второй домен
+# того же языка процессов. Заменяет правило invoice-received (0.2.0), которое
+# заводило одну работу с запросом согласования финансовому директору.
+#
+# Счёт получен (наблюдение invoice.received) → бухгалтерия проверяет счёт и сдаёт
+# заключение → таблица решений выбирает, кто согласует: до порога — бухгалтерия,
+# выше порога или не в рублях — финансовый директор; загрузивший счёт согласовать
+# его не может (разделение обязанностей) → согласовано: уведомление бухгалтерии
+# скиллом notify.send@1 и задача «оплатить счёт» с формой, закрытие с исходом paid;
+# не согласовано или проверка нашла расхождение — уведомление загрузившему и
+# закрытие с исходом. Просроченное согласование эскалируется таймером.
+#
+# База знаний компании (TAI-ADR-0056 Р15, второй потребитель онтологии company@1): до
+# проверки процесс вспоминает контрагента по ИНН, его договоры (party_to) и
+# подразделение, которое его ведёт (serves), с его ролями. Нет действующего договора
+# или сумма выше лимита договора — согласует финансовый директор, источник — договор;
+# проверку ведёт роль подразделения контрагента (запасная — бухгалтерия).
+#
+# Ядро не знает, что такое счёт: здесь только данные, таблица, роли пакета и
+# скилл каталога. ${…} — переменные установки, как у прежнего правила.
+apiVersion: taimen.ai/v1
+kind: Process
+key: invoice-payment
+spec:
+  version: 2
+  displayName: Оплата счёта поставщика
+  description: >-
+    Проверка счёта, согласование по порогу суммы с разделением обязанностей,
+    уведомление бухгалтерии и оплата с закрытием дела.
+  workspaceId: ${INVOICE_WORKSPACE_ID}
+  identity: {agent: invoice-process}
+  owner: [{role: finance-director}]
+  data:
+    type: object
+    required: [number, supplier, supplierInn, amount, currency, uploadedBy]
+    properties:
+      number: {type: string, description: Номер счёта}
+      supplier: {type: string, description: Наименование поставщика}
+      supplierInn: {type: string, description: ИНН поставщика}
+      amount: {type: number}
+      currency: {type: string}
+      uploadedBy: {type: string, description: "Principal, загрузивший счёт"}
+      invoiceDate: {type: string, description: "Дата счёта (ГГГГ-ММ-ДД); пусто — сроки договоров не сверяются"}
+      counterparty: {type: object, description: "Контрагент, договоры, подразделение и роли — ответ recall"}
+      agreements:
+        type: array
+        description: Действующие на дату счёта договоры (узлы памяти)
+        items:
+          type: object
+          properties:
+            kind: {type: string}
+            key: {type: string}
+            title: {type: string}
+            attributes: {type: object}
+      hasAgreement: {type: boolean}
+      agreementKey: {type: string, description: Действующий договор — источник решения о маршруте}
+      agreementLimit: {type: number, description: "Лимит (или сумма) договора; 0 — не указан"}
+      withinLimit: {type: boolean}
+      reviewRole: {type: string, description: "Роль подразделения, ведущего контрагента (serves)"}
+      routeNote: {type: string}
+      review: {type: string, enum: [ok, mismatch]}
+      reviewNote: {type: string}
+      approverRole: {type: string}
+      approval: {type: string}
+      approvedBy: {type: array, items: {type: string}}
+      rejectedBy: {type: array, items: {type: string}}
+      paidOn: {type: string}
+      paymentReference: {type: string}
+  start:
+    on: {observation: invoice.received}
+    # Одно дело на счёт, как дедуп прежнего правила (invoice:<номер>): повтор
+    # наблюдения с тем же номером — не новый экземпляр.
+    key: "'invoice:' + string(event.payload.data.invoice)"
+    set:
+      number: string(event.payload.data.invoice)
+      supplier: string(event.payload.data.supplier)
+      supplierInn: string(event.payload.data.supplierInn)
+      amount: double(event.payload.data.amount)
+      currency: string(event.payload.data.currency)
+      uploadedBy: string(event.payload.data.uploadedBy)
+      invoiceDate: "has(event.payload.data.date) ? string(event.payload.data.date) : ''"
+  memory:
+    case: {key: "'invoice:' + data.number", title: "'Счёт ' + data.number + ': ' + data.supplier"}
+    facts:
+      amount: data.amount
+      currency: data.currency
+      approverRole: data.?approverRole.orValue('')
+      approval: data.?approval.orValue('')
+      paymentReference: data.?paymentReference.orValue('')
+      agreement: data.?agreementKey.orValue('')
+    entities:
+      - {kind: legal_entity, key: data.supplierInn, name: data.supplier, rel: supplier}
+    documents: {artifacts: [invoice-review]}
+  decisions:
+    - id: approval-route
+      displayName: Кто согласует оплату
+      hitPolicy: first
+      inputs:
+        - {id: agreement, expr: data.hasAgreement, type: boolean}
+        - {id: withinlimit, expr: data.withinLimit, type: boolean}
+        - {id: amount, expr: data.amount, type: number}
+        - {id: currency, expr: data.currency, type: string}
+      outputs: [{id: approver, type: string}, {id: note, type: string}]
+      rules:
+        - when: {agreement: "false", withinlimit: "-", currency: "-", amount: "-"}
+          then: {approver: finance-director, note: "Нет действующего договора с контрагентом"}
+          note: Нет действующего договора — финансовый директор (источник — база знаний)
+        - when: {agreement: "-", withinlimit: "false", currency: "-", amount: "-"}
+          then: {approver: finance-director, note: "Сумма выше лимита договора"}
+          note: Сверх лимита договора — финансовый директор (источник — договор)
+        - when: {agreement: "-", withinlimit: "-", currency: RUB, amount: "[0..100000)"}
+          then: {approver: accounting, note: "До 100 000 ₽ по действующему договору"}
+          note: До 100 000 ₽ согласует бухгалтерия
+        - when: {agreement: "-", withinlimit: "-", currency: "-", amount: "-"}
+          then: {approver: finance-director, note: "От порога или в иной валюте"}
+          note: От порога и выше, а также в иной валюте — финансовый директор
+  stages:
+    - id: review
+      displayName: Проверка счёта
+      steps:
+        - id: recall-counterparty
+          displayName: Контрагент, договоры и кто его ведёт
+          recall:
+            anchors: [{kind: legal_entity, key: data.supplierInn}]
+            traverse:
+              - {relation: party_to, direction: out, depth: 1, limit: 50}
+              - {relation: serves, direction: in, depth: 1, limit: 10, from: anchors}
+              - {relation: belongs_to, direction: in, depth: 1, limit: 20, from: previous}
+            kinds: [legal_entity, agreement, org_unit, role]
+            limit: 100
+            timeout: PT2M
+            onTimeout: [{id: no-counterparty, set: {counterparty: "{'nodes': [], 'edges': []}"}}]
+          output: {as: {counterparty: step.result}}
+        - id: agreements
+          displayName: Действующие договоры и лимит
+          set:
+            agreements: >-
+              data.counterparty.nodes.filter(n, n.kind == 'agreement'
+                && (data.invoiceDate == '' || !has(n.attributes.validUntil) || n.attributes.validUntil >= data.invoiceDate)
+                && (data.invoiceDate == '' || !has(n.attributes.validFrom) || n.attributes.validFrom <= data.invoiceDate)
+                && (!has(n.attributes.status) || n.attributes.status == 'active'))
+            reviewRole: >-
+              data.counterparty.nodes.exists(n, n.kind == 'role' && has(n.attributes.platformRole))
+              ? data.counterparty.nodes.filter(n, n.kind == 'role' && has(n.attributes.platformRole))[0].attributes.platformRole
+              : 'accounting'
+        - id: agreement-limit
+          set:
+            hasAgreement: size(data.agreements) > 0
+            agreementKey: "size(data.agreements) > 0 ? data.agreements.map(a, a.key)[0] : ''"
+            agreementLimit: >-
+              size(data.agreements) == 0 ? 0.0
+              : (has(data.agreements[0].attributes.limitAmount) ? double(data.agreements[0].attributes.limitAmount)
+                 : (has(data.agreements[0].attributes.amount) ? double(data.agreements[0].attributes.amount) : 0.0))
+        - id: within-limit
+          set:
+            withinLimit: data.agreementLimit == 0.0 || data.amount <= data.agreementLimit
+        - id: check-invoice
+          human:
+            taskType: invoice-review
+            title: "'Проверить счёт ' + data.number + ': ' + data.supplier"
+            # роль подразделения, которое ведёт контрагента; нет — бухгалтерия
+            assign: [{expr: "'role:' + data.reviewRole"}, {role: accounting}]
+            due: P2D
+            form:
+              schema:
+                type: object
+                required: [verdict]
+                properties:
+                  verdict: {type: string, enum: [ok, mismatch], title: Итог проверки}
+                  note: {type: string, title: Комментарий}
+          output:
+            as:
+              review: step.result.verdict
+              reviewNote: step.result.?note.orValue('')
+        - id: notify-mismatch
+          when: data.review == 'mismatch'
+          call:
+            skill: notify.send@1
+            input:
+              recipient: "{'kind': 'principal', 'id': data.uploadedBy}"
+              type: "'invoice.review_failed'"
+              title: "'Счёт ' + data.number + ' не прошёл проверку'"
+              body: "'Поставщик ' + data.supplier + '. ' + data.reviewNote"
+        - id: close-mismatch
+          when: data.review == 'mismatch'
+          complete: {outcome: rejected-on-review}
+    - id: approval
+      displayName: Согласование оплаты
+      entry: stage.review.completed && data.review == 'ok'
+      steps:
+        - id: route
+          decide: {table: approval-route}
+          output: {as: {approverRole: step.result.approver, routeNote: step.result.note}}
+        - id: approve-payment
+          approve:
+            approvers: [{expr: "'role:' + data.approverRole"}]
+            quorum: any
+            # Загрузивший счёт не согласует его оплату, даже если держит роль.
+            separationOfDuties: "[data.uploadedBy]"
+            due: P2D
+            onDue: escalate
+            escalations:
+              - {after: due, action: notify, to: [{role: finance-director}]}
+              - {after: P1D, action: remind}
+          output:
+            as:
+              approval: step.result.outcome
+              approvedBy: step.result.approvedBy
+              rejectedBy: step.result.rejectedBy
+        - id: notify-rejected
+          when: data.approval == 'rejected'
+          call:
+            skill: notify.send@1
+            input:
+              recipient: "{'kind': 'principal', 'id': data.uploadedBy}"
+              type: "'invoice.payment_rejected'"
+              title: "'Оплата счёта ' + data.number + ' не согласована'"
+              body: "'Поставщик ' + data.supplier + ', сумма ' + string(data.amount) + ' ' + data.currency + '.'"
+        - id: close-rejected
+          when: data.approval == 'rejected'
+          complete: {outcome: rejected}
+    - id: payment
+      displayName: Оплата
+      entry: stage.approval.completed && data.approval == 'approved'
+      steps:
+        - id: notify-accounting
+          call:
+            skill: notify.send@1
+            input:
+              recipient: "{'kind': 'role', 'id': '${ACCOUNTING_ROLE_ID}', 'workspaceId': '${INVOICE_WORKSPACE_ID}'}"
+              type: "'invoice.payment_approved'"
+              title: "'Оплата согласована: счёт ' + data.number"
+              body: "'Поставщик ' + data.supplier + ', сумма ' + string(data.amount) + ' ' + data.currency + '. Задача на оплату — в workspace.'"
+        - id: pay
+          human:
+            taskType: invoice-payment
+            title: "'Оплатить счёт ' + data.number + ': ' + data.supplier"
+            assign: [{role: accounting}]
+            form:
+              schema:
+                type: object
+                required: [paidOn, reference]
+                properties:
+                  paidOn: {type: string, format: date, title: Дата оплаты}
+                  reference: {type: string, title: Номер платёжного поручения}
+          output:
+            as:
+              paidOn: step.result.paidOn
+              paymentReference: step.result.reference
+        - id: close-paid
+          complete: {outcome: paid}

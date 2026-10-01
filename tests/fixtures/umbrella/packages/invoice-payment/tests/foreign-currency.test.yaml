@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Порог задан в рублях: счёт в иной валюте согласует финансовый директор при любой сумме.
+process: invoice-payment
+name: счёт в иной валюте согласует финансовый директор
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  # Держатели ролей — вымышленные principal теста (UUID: получатель notify.send@1 — uuid).
+  principals:
+    accounting: [1a000000-0000-4000-8000-000000000001, 1a000000-0000-4000-8000-000000000002]
+    finance-director: [1f000000-0000-4000-8000-000000000001]
+mocks:
+  recall:
+    - step: recall-counterparty
+      output:
+        nodes:
+          - {kind: legal_entity, key: "7701234567", anchor: true, title: "ООО «Поставщик»"}
+          - {kind: agreement, key: "agreement:1c:D-1", title: Поставка, attributes: {number: "Д-1", subject: Поставка, limitAmount: 10000000, status: active}}
+        edges: [{relation: party_to, from: "7701234567", to: "agreement:1c:D-1"}]
+  skills:
+    notify.send@1:
+      - output: {notificationId: 0e000000-0000-4000-8000-000000000001, deliveries: [{channel: telegram, status: pending}]}
+steps:
+  - emit:
+      observation: invoice.received
+      payload:
+        data: {invoice: "СЧ-2026-101", supplier: "ООО «Поставщик»", supplierInn: "7701234567",
+               amount: 900, currency: USD, uploadedBy: 1a000000-0000-4000-8000-000000000001}
+  - expect:
+      stages: {review: open, approval: not_started, payment: not_started}
+      tasks: [{step: check-invoice, assignee: "role:accounting"}]
+  - complete: {step: check-invoice, by: 1a000000-0000-4000-8000-000000000002, output: {verdict: ok}}
+  - expect: {data: {approverRole: finance-director}}

@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../../schema/v1/object.schema.json
+# The installation of the example: the package claims from this directory and the
+# ontologies of the claims workspace. Values of the variables come from the
+# environment or from --env:
+#
+#   package-sdk plan  --install packages.yaml --server <core> --env claims.env --out plan.json
+#   package-sdk apply --plan plan.json --server <core> --env claims.env
+apiVersion: taimen.ai/v1
+kind: Installation
+key: claims-example
+spec:
+  packages:
+    - {key: claims, path: ./claims}
+  knowledge:
+    - workspace: ${CLAIMS_WORKSPACE_ID}
+      packs: ["default@1", "claims@1"]

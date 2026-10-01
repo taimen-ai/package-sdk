@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Коннектор 1С (TAI-ADR-0056 Р8, FR-008, FR-024) — источник базы знаний компании.
+# Код — integrations/onec (образ taimen/onec-connector:local вида исполнителя observer).
+#
+# Стандартный интерфейс OData базы — только чтение: профиль типовой конфигурации
+# (bp30, ut11, erp2, ka2, zup3) — данные; дельта по DataVersion, полные снимки на
+# объект источника onec:<база> через ядро. Сотрудников и физических лиц не читает.
+# Учётные данные служебного пользователя OData — секрет узла onec-credentials
+# (login:password или JSON {user, password}); в журналы, снимки и артефакты не попадают.
+#
+# Нужно установке: ${KNOWLEDGE_WORKSPACE_ID} — workspace базы знаний (корень дерева с
+# включённой онтологией company@1); узел fleet с меткой onec-access в сети, откуда
+# видна 1С; адрес, имя и профиль базы — правкой config и `package-sdk apply`.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: onec-connector
+spec:
+  displayName: 1C connector
+  description: Снимки базы знаний компании из 1С по стандартному интерфейсу OData (только чтение)
+  identity:
+    kind: agent
+    permissions:
+    - observations.write
+  work:
+    workspace: ${KNOWLEDGE_WORKSPACE_ID}
+  executor:
+    kind: observer
+    params:
+      entrypoint: taimen_onec.agent:observe
+      intervalSeconds: 3600
+      config:
+        baseUrl: http://1c.example.local/accounting
+        base: accounting
+        profile: bp30
+  placement:
+    requires:
+    - onec-access
+    secrets:
+    - onec-credentials
+    resources:
+      cpus: 1
+      memoryMb: 256
+  state: stopped

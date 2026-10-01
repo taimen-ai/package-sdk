@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Процесс расходится с изменившимся регламентом (TAI-ADR-0054 Р17, SC-012). Задачу
+# заводит правило regulation-drift по выходу process.regulation_check@1: одна задача
+# на пару «процесс + документ + ревизия документа», в полях — какой элемент процесса
+# и какой пункт регламента расходятся и что предлагается поправить. Решение о правке
+# — за владельцем процесса (FR-055): правка — новой версией процесса в пакете, отказ —
+# закрыть задачу с комментарием.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: process-regulation-drift
+spec:
+  displayName: Процесс расходится с регламентом
+  description: >-
+    Регламент базы знаний изменился, и элементы процесса, которые на него ссылаются
+    (governedBy), с ним расходятся. Поля — процесс и его версия, документ и ревизия,
+    элементы процесса и пункты регламента, расхождения с предложениями правки.
+  fieldSchema:
+    type: object
+    required: [process, version, document, revision, elements]
+    properties:
+      process: {type: string, minLength: 1, maxLength: 63, description: Ключ процесса}
+      version: {type: integer, minimum: 1, description: "Версия процесса, с которой сверялся регламент"}
+      document: {type: string, minLength: 1, maxLength: 300, description: Естественный ключ документа базы знаний}
+      revision: {type: string, minLength: 1, maxLength: 200, description: "Ревизия документа, на которой найдено расхождение"}
+      elements:
+        type: array
+        minItems: 1
+        maxItems: 100
+        items: {type: string, maxLength: 63}
+        description: id элементов процесса (process — процесс целиком)
+      sections:
+        type: array
+        maxItems: 100
+        items: {type: string, maxLength: 100}
+        description: Пункты регламента
+      findings:
+        type: array
+        maxItems: 100
+        description: Расхождения по элементам — выход process.regulation_check@1
+        items:
+          type: object
+          required: [element, finding]
+          properties:
+            element: {type: string, maxLength: 63}
+            elementKind: {type: string, maxLength: 20}
+            section: {type: [string, "null"], maxLength: 100}
+            finding: {type: string, maxLength: 4000}
+            suggestion: {type: string, maxLength: 4000}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: blocked, category: blocked, displayName: Blocked}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, blocked, done, cancelled]}
+      - {from: in_progress, to: [todo, blocked, done, cancelled]}
+      - {from: blocked, to: [todo, in_progress, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Регламент изменился, и процесс, который на него ссылается, с ним расходится.
+
+    1. Прочитайте пункт регламента (поле `document`, пункты `sections`) и элементы
+       процесса (`process`, `elements`) — в описании задачи по каждому расхождению есть
+       суть и предложение правки.
+    2. Решите: правка процесса, правка регламента или расхождения нет.
+    3. Правка процесса — новая версия в пакете процесса; план ядра покажет, что станет
+       с открытыми экземплярами. Ссылки `governedBy` на пункты сохраните.
+    4. Расхождения нет — закройте задачу с комментарием, почему.
+
+    Задачу завело правило regulation-drift; пока она открыта, повтор той же ревизии
+    регламента новых задач не заводит.

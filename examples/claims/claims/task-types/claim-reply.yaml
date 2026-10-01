@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# "Reply to the customer": the task of the step `send-reply` of the process `claim`.
+# A reply is a write to an external system on behalf of the organization, so it goes
+# out only on a decision of a person: the gate approval of this task invokes the
+# external-write skill helpdesk.reply@1 and completes the task with it. A rejected
+# reply stays open for another draft.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: claim-reply
+spec:
+  displayName: Reply to the customer
+  description: The reply to a customer claim, sent to the helpdesk once a person approves it
+  instructions: |-
+    Put the ticket id into `ticketId` and the final text into `message`, then ask for
+    an approval of the task: the reply is sent when the approval is granted.
+  fieldSchema:
+    type: object
+    properties:
+      ticketId: {type: string, title: Ticket}
+      message: {type: string, minLength: 1, maxLength: 4000, title: Reply}
+      replyId: {type: string, title: Reply in the helpdesk}
+  lifecycleSchema:
+    statuses:
+      - {key: draft, category: active, displayName: Draft}
+      - {key: sent, category: terminal_success, displayName: Sent}
+      - {key: dropped, category: terminal_cancelled, displayName: Dropped}
+    transitions:
+      - {from: draft, to: [sent, dropped]}
+    initialStatus: draft
+    completionStatus: sent
+  approvalSchema:
+    gates:
+      default:
+        outcomes:
+          approved:
+            - invokeSkill:
+                skill: helpdesk.reply@1
+                inputs:
+                  ticketId: $.task.customFields.ticketId!
+                  message: $.task.customFields.message!
+                onSuccess:
+                  - completeTask: {}
+                onFailure:
+                  - comment: {body: "The reply to ticket $.task.customFields.ticketId was not sent: the helpdesk refused it"}
+          rejected:
+            - comment: {body: "The reply to ticket $.task.customFields.ticketId was rejected: $.approval.comment"}

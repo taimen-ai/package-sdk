@@ -1,0 +1,118 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.template
+spec:
+  version: '1'
+  description: Построить шаблон загрузки вида любого пакета онтологии (XLSX или CSV)
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        pack:
+          description: 'Пакет вида: company@1, procurement@2, tenant:<имя>@<версия>'
+          title: Pack
+          type: string
+        kind:
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          title: Kind
+          type: string
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          description: Значение профиля вида, например sro
+          title: Profile
+        format:
+          default: xlsx
+          enum:
+          - xlsx
+          - csv
+          title: Format
+          type: string
+        packs:
+          description: 'Другие включённые пакеты: виды концов связей и профили (default@1…)'
+          items:
+            type: string
+          title: Packs
+          type: array
+        definitions:
+          description: Описания пакетов, которых нет среди встроенных
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+      required:
+      - pack
+      - kind
+      title: TemplateIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        TemplateColumn:
+          properties:
+            field:
+              title: Field
+              type: string
+            header:
+              title: Header
+              type: string
+            required:
+              title: Required
+              type: boolean
+            type:
+              title: Type
+              type: string
+            hint:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Hint
+          required:
+          - field
+          - header
+          - required
+          - type
+          title: TemplateColumn
+          type: object
+      properties:
+        templateVersion:
+          title: Templateversion
+          type: string
+        filename:
+          title: Filename
+          type: string
+        mediaType:
+          title: Mediatype
+          type: string
+        contentBase64:
+          title: Contentbase64
+          type: string
+        columns:
+          items:
+            $ref: '#/$defs/TemplateColumn'
+          title: Columns
+          type: array
+      required:
+      - templateVersion
+      - filename
+      - mediaType
+      - contentBase64
+      - columns
+      title: TemplateOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 60
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.template_skill:template

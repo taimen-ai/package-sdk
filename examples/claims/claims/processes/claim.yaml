@@ -1,0 +1,195 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The case of a customer claim (TAI-ADR-0054). A new helpdesk ticket starts it — one
+# case per ticket:
+#
+#   intake  — the skill claims.classify@1 names the category and the severity, the
+#             decision table claim-route picks the role that reviews the claim;
+#   review  — a person of that role decides on the resolution and drafts the reply;
+#             a refund above ${CLAIMS_REFUND_THRESHOLD} needs a claims manager, and never
+#             the one who reviewed the claim (separation of duties); a refund the
+#             manager rejects turns into a rejection with a standard reply;
+#   reply   — the reply task goes out to the helpdesk only when a person approves it
+#             (the gate of the task type claim-reply runs helpdesk.reply@1), then the
+#             decision is remembered and the case closes with its outcome.
+#
+# The case is projected into memory: the claim, the customer who filed it and the
+# product it concerns.
+apiVersion: taimen.ai/v1
+kind: Process
+key: claim
+spec:
+  version: 1
+  displayName: Customer claim
+  description: >-
+    Classification, routing, review, refund approval with separation of duties and a
+    reply approved by a person.
+  workspaceId: ${CLAIMS_WORKSPACE_ID}
+  identity: {agent: claims-process}
+  owner: [{role: claims-manager}]
+  data:
+    type: object
+    required: [ticketId, customerId, subject, text]
+    properties:
+      ticketId: {type: string, description: Ticket in the helpdesk}
+      customerId: {type: string}
+      customerName: {type: string}
+      product: {type: string}
+      subject: {type: string}
+      text: {type: string}
+      amount: {type: number, description: What the customer paid}
+      currency: {type: string}
+      category: {type: string, enum: [defect, delivery, billing, other]}
+      severity: {type: string, enum: [low, medium, high]}
+      reviewRole: {type: string}
+      routeNote: {type: string}
+      resolution: {type: string, enum: [refund, replacement, rejection]}
+      refundAmount: {type: number}
+      reply: {type: string}
+      reviewedBy: {type: string, description: Principal who reviewed the claim}
+      approval: {type: string}
+      approvedBy: {type: array, items: {type: string}}
+  start:
+    "on": {observation: helpdesk.ticket_created}
+    # One case per ticket: a repeated observation of the same ticket is no new case.
+    key: "'claim:' + string(event.payload.data.ticketId)"
+    set:
+      ticketId: string(event.payload.data.ticketId)
+      customerId: string(event.payload.data.customerId)
+      customerName: string(event.payload.data.customerName)
+      product: string(event.payload.data.product)
+      subject: string(event.payload.data.subject)
+      text: string(event.payload.data.text)
+      amount: double(event.payload.data.amount)
+      currency: string(event.payload.data.currency)
+  memory:
+    case: {kind: claim, key: "'claim:' + data.ticketId", title: "data.ticketId + ': ' + data.subject"}
+    facts:
+      subject: data.subject
+      category: data.?category.orValue('')
+      severity: data.?severity.orValue('')
+      resolution: data.?resolution.orValue('')
+      refundAmount: data.?refundAmount.orValue(0.0)
+    entities:
+      - {kind: legal_entity, key: data.customerId, name: data.customerName, rel: filed_by}
+      - {kind: product, key: data.product, name: data.product, rel: concerns}
+  decisions:
+    - id: claim-route
+      displayName: Who reviews the claim
+      hitPolicy: first
+      inputs:
+        - {id: severity, expr: data.severity, type: string}
+        - {id: category, expr: data.category, type: string}
+      outputs: [{id: role, type: string}, {id: note, type: string}]
+      rules:
+        - when: {severity: high, category: "-"}
+          then: {role: claims-manager, note: "High severity: a manager reviews it"}
+          note: A risk to safety or a legal threat goes straight to a manager
+        - when: {severity: "-", category: billing}
+          then: {role: claims-manager, note: "Billing: a manager reviews it"}
+          note: A wrong charge is money already taken — a manager reviews it
+        - when: {severity: "-", category: "-"}
+          then: {role: claims-officer, note: "Standard handling"}
+          note: Everything else — a claims officer
+  stages:
+    - id: intake
+      displayName: Intake
+      steps:
+        - id: classify
+          displayName: Classify the claim
+          call:
+            skill: claims.classify@1
+            input: {subject: data.subject, text: data.text}
+            timeout: PT10M
+          output: {as: {category: step.result.category, severity: step.result.severity}}
+        - id: route
+          displayName: Route the claim
+          decide: {table: claim-route}
+          output: {as: {reviewRole: step.result.role, routeNote: step.result.note}}
+    - id: review
+      displayName: Review
+      entry: stage.intake.completed
+      steps:
+        - id: review-claim
+          displayName: Review the claim
+          human:
+            taskType: claim-review
+            title: "'Review claim ' + data.ticketId + ': ' + data.subject"
+            assign: [{expr: "'role:' + data.reviewRole"}]
+            due: P2D
+            form:
+              schema:
+                type: object
+                required: [resolution, refundAmount, reply]
+                properties:
+                  resolution: {type: string, enum: [refund, replacement, rejection], title: Resolution}
+                  refundAmount: {type: number, minimum: 0, title: Refund}
+                  reply: {type: string, minLength: 1, title: Reply to the customer}
+          # shown to the reviewer in the description of the task
+          input:
+            from: >-
+              {'ticketId': data.ticketId, 'customer': data.customerName, 'product': data.product,
+               'amount': data.amount, 'currency': data.currency, 'text': data.text,
+               'category': data.category, 'severity': data.severity, 'route': data.routeNote}
+          output:
+            as:
+              resolution: step.result.resolution
+              refundAmount: double(step.result.refundAmount)
+              reply: step.result.reply
+              reviewedBy: string(task.assigneeId)
+        - id: approve-refund
+          displayName: Approve the refund
+          when: data.resolution == 'refund' && data.refundAmount > double(${CLAIMS_REFUND_THRESHOLD})
+          approve:
+            approvers: [{role: claims-manager}]
+            quorum: any
+            # Who reviewed the claim does not approve its refund, even holding the role.
+            separationOfDuties: "[data.reviewedBy]"
+            due: P2D
+            escalations:
+              - {after: due, action: remind}
+          output:
+            as:
+              approval: step.result.outcome
+              approvedBy: step.result.approvedBy
+        - id: refund-declined
+          displayName: The refund was not approved
+          when: data.?approval.orValue('') == 'rejected'
+          set:
+            resolution: "'rejection'"
+            refundAmount: "0.0"
+            reply: "'We reviewed your claim about ' + data.product + '. We cannot refund it; our claims team will contact you with other options.'"
+    - id: reply
+      displayName: Reply
+      entry: stage.review.completed
+      steps:
+        - id: send-reply
+          displayName: Reply to the customer
+          human:
+            taskType: claim-reply
+            title: "'Reply to ticket ' + data.ticketId"
+            assign: [{expr: "'role:' + data.reviewRole"}]
+            due: P1D
+            form:
+              schema:
+                type: object
+                required: [ticketId, message]
+                properties:
+                  ticketId: {type: string, title: Ticket}
+                  message: {type: string, minLength: 1, title: Reply}
+          input:
+            from: "{'ticketId': data.ticketId, 'draft': data.reply, 'resolution': data.resolution}"
+        - id: remember-decision
+          displayName: Remember the decision
+          remember:
+            facts:
+              resolution: data.resolution
+              refundAmount: data.refundAmount
+              reviewedBy: data.reviewedBy
+        - id: close-refunded
+          when: data.resolution == 'refund'
+          complete: {outcome: refunded}
+        - id: close-replaced
+          when: data.resolution == 'replacement'
+          complete: {outcome: replaced}
+        - id: close-rejected
+          complete: {outcome: rejected}

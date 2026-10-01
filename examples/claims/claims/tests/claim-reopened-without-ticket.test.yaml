@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: rule
+rule: claim-reopened
+name: an observation without a ticket is not a claim
+given:
+  observation:
+    kind: helpdesk.ticket_reopened
+    data: {channel: web, subject: Hello}
+steps:
+  - expect:
+      result: not_matched
+      invokeSkill: []
+      ensureWork: []

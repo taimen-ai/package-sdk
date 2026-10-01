@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Role
+key: knowledge-owner
+spec:
+  name: Владелец базы знаний
+  description: >-
+    Отвечает за базу знаний компании: решает, применять ли план загрузки, получает
+    напоминания об истечении сроков по видам без своего ответственного

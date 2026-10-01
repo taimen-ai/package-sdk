@@ -1,0 +1,80 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: submodule.lag_check
+spec:
+  version: '1'
+  description: Сверить указатели сабмодулей суперпроекта с головами их веток
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        submodules:
+          type: array
+          items:
+            type: string
+            minLength: 1
+          maxItems: 50
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - lagging
+      - current
+      - unknown
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - lagging
+          - current
+        lagging:
+          type: array
+          maxItems: 50
+          items: &id001
+            type: object
+            required:
+            - path
+            - branch
+            - pinned
+            - head
+            properties:
+              path:
+                type: string
+              branch:
+                type: string
+              pinned:
+                type: string
+              head:
+                type: string
+        current:
+          type: array
+          maxItems: 50
+          items: *id001
+        unknown:
+          type: array
+          items: *id001
+    idempotency: none
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.submodule_lag:invoke

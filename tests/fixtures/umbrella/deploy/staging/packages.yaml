@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Каталог staging (TAI-ADR-0044 п.5). retire — история стенда, а не пакета:
+# типы ранних экспериментов выводятся из оборота (решение владельца 2026-09-23).
+# Системный task остаётся — ядро держит его активную версию. support_case
+# пакетами пока не управляется и не трогается.
+apiVersion: taimen.ai/v1
+kind: Installation
+key: taimen-staging
+spec:
+  # invoice-payment — пакет другого домена (spec notifications, сценарий 6; spec
+  # process-packages, SC-007): с 0.3.0 — процесс invoice-payment, публикуется планом ядра
+  # (plan --out → apply --plan); ставится в workspace «Оплата счетов (демо)»
+  # process-knowledge — правило regulation-drift уровня tenant'а (переменных установки
+  # нет); пакет онтологии памяти регистрируется отдельно, taimen-process-knowledge-pack.
+  # Последним: его правило несёт fields.workspaceId, которое ядро примет только после
+  # process-packages P012 (амендмент CP-ADR-0063) — до выкатки P012 отказ ядра на нём
+  # не остановит установку остальных пакетов.
+  # company-knowledge — база знаний компании (TAI-ADR-0056): загрузка таблиц и документов,
+  # коннектор 1С (агент остановлен, пока нет узла с доступом к учётной системе), правило
+  # истечения сроков knowledge-expiry. Онтология company@1 регистрируется и включается для
+  # дерева workspace отдельно (taimen-company-knowledge-pack register / enable), личность
+  # правила knowledge-rules заводится установкой (IAM service account + PUT
+  # /agents/{key}/identity). Ставится раньше invoice-payment: процесс оплаты счёта читает
+  # контрагентов и договоры из той же базы знаний.
+  packages: [platform-services, platform-calendars, selfdev, sdd, notify, company-knowledge, invoice-payment, process-knowledge]
+  retire:
+    # code-review — дубль code-review-merge (решение владельца 2026-09-25);
+    # code-review-merge — ревью теперь критерий приёмки coding-task (TAI-ADR-0053)
+    TaskType: [ops, analysis, research, documentation, code-review, code-review-merge]
+    # process-runtime — мост BPMN-движка; движок заменён процессами в ядре (TAI-ADR-0054),
+    # описание убрано из platform-services 0.2.0, личность сервиса выводится из оборота
+    Agent: [process-runtime]
+    # invoice-received — правило пакета invoice-payment до 0.3.0: его заменил процесс
+    # invoice-payment (TAI-ADR-0054, P024). Вид меняется (WorkRule → Process), поэтому
+    # это не renames пакета, а вывод из оборота: правило архивируется, заведённые им
+    # работы доживают как были
+    WorkRule: [invoice-received]

@@ -1,0 +1,133 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.import_apply
+spec:
+  version: '1'
+  description: Применить план загрузки таблицы, только если база не изменилась с плана
+  sideEffects: external_write
+  riskLevel: medium
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        fileArtifactId:
+          description: Артефакт knowledge-file с таблицей
+          minLength: 1
+          title: Fileartifactid
+          type: string
+        workspaceId:
+          description: Workspace базы знаний
+          minLength: 1
+          title: Workspaceid
+          type: string
+        pack:
+          description: 'Пакет вида: company@1, procurement@2, tenant:<имя>@<версия>'
+          title: Pack
+          type: string
+        kind:
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          title: Kind
+          type: string
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Profile
+        source:
+          anyOf:
+          - pattern: ^[a-z0-9][a-z0-9:_-]{0,120}$
+            type: string
+          - type: 'null'
+          default: null
+          description: Источник, владеющий элементами; по умолчанию template:<вид>
+          title: Source
+        packs:
+          description: Другие включённые пакеты
+          items:
+            type: string
+          title: Packs
+          type: array
+        definitions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+        filename:
+          default: ''
+          title: Filename
+          type: string
+        expectedState:
+          maxLength: 128
+          minLength: 1
+          title: Expectedstate
+          type: string
+        snapshotId:
+          description: Публичный id задачи
+          maxLength: 200
+          minLength: 1
+          title: Snapshotid
+          type: string
+      required:
+      - fileArtifactId
+      - workspaceId
+      - pack
+      - kind
+      - expectedState
+      - snapshotId
+      title: ApplyIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Counts:
+          properties:
+            opened:
+              default: 0
+              title: Opened
+              type: integer
+            changed:
+              default: 0
+              title: Changed
+              type: integer
+            closed:
+              default: 0
+              title: Closed
+              type: integer
+            unchanged:
+              default: 0
+              title: Unchanged
+              type: integer
+          title: Counts
+          type: object
+      properties:
+        status:
+          enum:
+          - applied
+          - stale
+          title: Status
+          type: string
+        counts:
+          $ref: '#/$defs/Counts'
+        stateToken:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Statetoken
+      required:
+      - status
+      - counts
+      title: ApplyOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.import_skills:import_apply

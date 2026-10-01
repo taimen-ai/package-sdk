@@ -1,0 +1,18 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "package-sdk",
+  "description": "Plugins of the package SDK: the author of catalog packages",
+  "owner": {
+    "name": "package-sdk maintainers"
+  },
+  "plugins": [
+    {
+      "name": "package-author",
+      "description": "Package author: task types, rules, processes, agents, integrations, ontologies and notifications from tests to an installation plan applied only after a human yes",
+      "version": "0.1.0",
+      "source": "./plugin/package-author",
+      "category": "development",
+      "tags": ["packages", "processes", "mcp"]
+    }
+  ]
+}

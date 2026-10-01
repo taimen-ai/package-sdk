@@ -1,0 +1,97 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Кодовый исполнитель iam-service; тесты на SQLite.
+# Агент описанием (TAI-ADR-0052): личность, работа, исполнитель, рабочая копия и
+# размещение; запускает платформа на узле fleet.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: iam-coder
+spec:
+  displayName: IAM coder (iam-service)
+  identity:
+    kind: agent
+    permissions:
+    - approvals.manage
+    - approvals.read
+    - artifacts.read
+    - artifacts.write
+    - claims.manage
+    - events.read
+    - goals.read
+    - goals.write
+    - observations.write
+    - projects.read
+    - rules.read
+    - sessions.open
+    - task_types.read
+    - tasks.claim
+    - tasks.read
+    - tasks.write
+    - workspaces.read
+  work:
+    workspace: ${SELFDEV_WORKSPACE_ID}
+    onlyAssigned: true
+  executor:
+    kind: claude-code
+    params:
+      model: claude-opus-5-5
+      permissionMode: bypassPermissions
+      timeoutSeconds: 10800
+    instructions: |
+      # Соглашения для агента-исполнителя iam-service
+
+      Этот текст добавляется к каждому prompt исполнителя (`CONTROL_PLANE_CLAUDE_PROMPT_FILE`).
+
+      ## Среда
+
+      - Рабочая копия — текущий каталог (`iam-service`). Соседи `../platform-auth-sdk` и
+        `../control-plane` стоят на ревизиях, закреплённых суперпроектом, и доступны
+        **только для чтения**. Правки вне iam-service не делай: сделай свою часть, а
+        остальное опиши в отчёте.
+      - IAM — источник истины идентичности: токены, principal'ы, внешние identity, PAT.
+        Изменение формата токена или claims — контракт для всех сервисов
+        (`platform-auth-sdk` проверяет токены): сверься с ним и закрепи contract-тестом.
+      - **Контракт другого сервиса не выдумывай** — бери из кода соседа.
+      - Тесты — на SQLite, отдельной базы нет: `uv run ruff check . && uv run ruff format
+        --check . && uv run pytest -q`. Одновременно — только один прогон и не в фоне.
+      - Безопасность выше удобства: новый путь выдачи токена — узкий, короткоживущий,
+        с журналом и тестами отказа (конституция, ст. VI).
+
+      ## Правила
+
+      - Архитектурные решения — в ADR (ADR суперпроекта или `docs/` сервиса — как принято в репозитории). Меняешь контракт API, схему
+        БД или поведение, описанное в ADR, — обнови или дополни ADR в том же коммите.
+      - Номер нового ADR — следующий свободный в `docs/adr/` на `origin/main` на момент
+        коммита: параллельные ветки уже занимали один номер (0056).
+      - Документация — на русском; комментарии в коде — как в окружающем коде, имена API
+        и сущностей — на английском.
+      - Не коммить секреты, локальные абсолютные пути, `.env`, артефакты сборки.
+      - Не трогай `main` и чужие ветки: демон сам коммитит и публикует ветку задачи.
+      - Не делай того, чего нет в задаче. Найденное попутно — в отчёт, а не в код.
+
+      ## Отчёт
+
+      Первой строкой — что сделано, одной фразой. Дальше: изменённые места, какие тесты
+      прогнаны и с каким результатом, что осталось или требует решения человека. Ревью
+      делает человек через approval, поэтому отчёт должен позволять проверить работу
+      без повторного исследования.
+  workingCopy:
+    repository: https://git.example.com/acme/taimen-iam-service.git
+    directory: iam-service
+    baseRef: main
+    neighbours:
+      platform-auth-sdk: https://git.example.com/acme/taimen-platform-auth-sdk.git
+      control-plane: https://git.example.com/acme/taimen-control-plane.git
+    superproject: https://git.example.com/acme/umbrella.git
+    publish: true
+  placement:
+    requires:
+    - claude-subscription
+    - repos
+    secrets:
+    - claude-oauth-token
+    - github-token
+    resources:
+      cpus: 2
+      memoryMb: 4096
+    drainSeconds: 14400
+  state: running

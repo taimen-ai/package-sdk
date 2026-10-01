@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: authz.coverage_check
+spec:
+  version: '1'
+  description: Проверить, что маршруты ядра под аутентификацией и права есть в каталоге
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        repo:
+          type: string
+          minLength: 1
+          maxLength: 100
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - findings
+      - failing
+      - stats
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - ok
+          - gaps
+        findings:
+          type: array
+          items: &id001
+            type: object
+            required:
+            - kind
+            - repo
+            - file
+            - line
+            - claim
+            - detail
+            properties:
+              kind:
+                enum:
+                - unauthenticated_route
+                - identity_dropped
+                - permission_not_in_catalog
+                - catalog_orphan
+              repo:
+                type: string
+              file:
+                type: string
+              line:
+                type: integer
+              claim:
+                type: string
+              detail:
+                type: string
+        failing:
+          type: array
+          maxItems: 50
+          items: *id001
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.authz_coverage:invoke

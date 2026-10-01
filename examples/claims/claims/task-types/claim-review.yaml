@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# "Review a claim": the task of the step `review` of the process `claim`. The person
+# decides on the resolution and drafts the reply; the fields of the task are the result
+# of the step.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: claim-review
+spec:
+  displayName: Review a claim
+  description: Decide on the resolution of a customer claim and draft the reply
+  instructions: |-
+    Read the claim in the description of the task. Set `resolution` (refund,
+    replacement or rejection), `refundAmount` (0 unless it is a refund) and `reply` —
+    the text the customer will get once it is approved.
+  fieldSchema:
+    type: object
+    properties:
+      resolution: {type: string, enum: [refund, replacement, rejection], title: Resolution}
+      refundAmount: {type: number, minimum: 0, title: Refund}
+      reply: {type: string, maxLength: 4000, title: Reply to the customer}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_review, category: active, displayName: In review}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_review, done, cancelled]}
+      - {from: in_review, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_review
+    releaseStatus: todo
+    completionStatus: done

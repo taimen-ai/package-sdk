@@ -1,0 +1,17 @@
+{
+  "description": "Применение плана установки — только по плану, который видел человек: перед pkg_apply хост спрашивает подтверждение, вызов без planHash или с чужим хэшем отклоняется.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^mcp__.*__pkg_apply$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"${CLAUDE_PLUGIN_ROOT}/hooks/confirm_apply.py\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

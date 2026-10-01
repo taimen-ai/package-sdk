@@ -1,0 +1,156 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: tender.analyze_docs
+spec:
+  version: '2'
+  description: 'Разобрать документацию закупки со знанием компании: риски с цитатами, блокеры, вопросы
+    заказчику и рекомендация go/no-go — решает человек'
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        purchase:
+          additionalProperties: true
+          description: Закупка — нормальная форма ЕИС
+          title: Purchase
+          type: object
+        documents:
+          items:
+            additionalProperties: true
+            type: object
+          maxItems: 20
+          title: Documents
+          type: array
+        history:
+          items:
+            additionalProperties: true
+            type: object
+          maxItems: 200
+          title: History
+          type: array
+        company:
+          additionalProperties: true
+          title: Company
+          type: object
+        matches:
+          additionalProperties: true
+          title: Matches
+          type: object
+        checks:
+          additionalProperties: true
+          title: Checks
+          type: object
+        asOf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Asof
+        requireAi:
+          default: false
+          title: Requireai
+          type: boolean
+      required:
+      - purchase
+      title: AnalyzeIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Recommendation:
+          properties:
+            decision:
+              enum:
+              - go
+              - no_go
+              - needs_review
+              title: Decision
+              type: string
+            rationale:
+              title: Rationale
+              type: string
+          required:
+          - decision
+          - rationale
+          title: Recommendation
+          type: object
+        Risk:
+          properties:
+            text:
+              title: Text
+              type: string
+            severity:
+              default: medium
+              enum:
+              - low
+              - medium
+              - high
+              title: Severity
+              type: string
+            quote:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Quote
+            source:
+              additionalProperties: true
+              title: Source
+              type: object
+          required:
+          - text
+          title: Risk
+          type: object
+      properties:
+        status:
+          enum:
+          - ok
+          - partial
+          title: Status
+          type: string
+        summary:
+          title: Summary
+          type: string
+        risks:
+          items:
+            $ref: '#/$defs/Risk'
+          title: Risks
+          type: array
+        blockers:
+          items:
+            type: string
+          title: Blockers
+          type: array
+        questions:
+          items:
+            type: string
+          title: Questions
+          type: array
+        recommendation:
+          $ref: '#/$defs/Recommendation'
+        documentsRead:
+          default: 0
+          title: Documentsread
+          type: integer
+        aiPending:
+          default: false
+          title: Aipending
+          type: boolean
+      required:
+      - status
+      - summary
+      - recommendation
+      title: AnalyzeOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 900
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_tenders.analyze_docs:invoke

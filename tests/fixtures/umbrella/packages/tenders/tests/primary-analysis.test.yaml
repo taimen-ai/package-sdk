@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Первичный анализ со знанием компании (TAI-ADR-0056 Р9, FR-014…FR-021, SC-002):
+# память о компании — документы и договоры, подразделения и роли (таймаут — анализ
+# идёт дальше без них), предложения под объект; позиции ↔ номенклатура, требования к
+# участнику; ИИ был недоступен — ИИ-часть повторена, детерминированная была готова
+# сразу; кто исполняет — роль по профилю работ; итог в данных и в памяти;
+# go/no-go видит анализ, покрытие, блокеры и рекомендацию.
+process: tender
+name: первичный анализ — знание компании, повтор ИИ-части, исполнитель по профилю
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice], general-director: [gd], dev-lead: [dev]}
+mocks:
+  recall:
+    - {step: recall-history, output: {nodes: []}}
+    - step: recall-company
+      output:
+        nodes:
+          - {kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}
+          - {kind: credential, key: "credential:license:Л-1", attributes: {type: license, validUntil: "2026-12-01"}}
+        edges: [{relation: held_by, from: "credential:license:Л-1", to: "7707083893"}]
+    - step: recall-offerings
+      output:
+        nodes: [{kind: offering, key: "offering:1c:SKU-1", title: Разработка ПО, attributes: {okpd2: ["62.01.11.000"]}}]
+        edges: []
+  skills:
+    tender.match_items@1:
+      - output:
+          status: partial
+          items: [{position: 1, name: Разработка модуля, status: met, method: okpd2, level: 3, offeringKey: "offering:1c:SKU-1"}]
+          coverage: {count: 1, total: 1, sumShare: "1.0000"}
+          executor: {}
+          aiPending: true
+          summary: ИИ недоступен — характеристики позже
+      - output:
+          status: ok
+          items: [{position: 1, name: Разработка модуля, status: met, method: okpd2, level: 3, offeringKey: "offering:1c:SKU-1"}]
+          coverage: {count: 1, total: 1, sumShare: "1.0000"}
+          executor: {role: dev-lead, capability: "capability:software"}
+          aiPending: false
+          summary: Позиций 1, покрыто 1
+    tender.check_requirements@1:
+      - output:
+          status: ok
+          checks: [{id: TU1131, title: Лицензия, status: met, warning: "срок истекает до конца исполнения", source: {type: notice_field}}]
+          blockers: []
+          warnings: ["срок истекает до конца исполнения"]
+          aiPending: false
+          summary: Требований 1
+      - output:
+          status: ok
+          checks: [{id: TU1131, title: Лицензия, status: met, source: {type: notice_field}}]
+          blockers: []
+          warnings: []
+          aiPending: false
+          summary: Требований 1
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: Разработка ИС
+          risks: [{text: Высокая неустойка, severity: high, quote: "неустойка 10%", source: {type: document, ref: Проект контракта.docx}}]
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: "Покрыто 1 из 1, блокеров нет"}
+          documentsRead: 1
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        source: eis
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000009"
+          law: 44-FZ
+          artifacts: [{id: art-1, fileName: Проект контракта.docx, content: true}]
+          purchase:
+            number: "0000000000026000009"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка модуля учёта
+            okpd2: ["62.01.12.000"]
+            maxPrice: {amount: "900000.00", currency: RUB}
+            deadlines: {published: "2026-10-01T09:00:00+03:00", submissionEnd: "2026-10-19T09:00:00+03:00"}
+            contractTerm: {end: "2027-03-31"}
+            items: [{position: 1, name: Разработка модуля, okpd2: {code: "62.01.12.000"}, sum: "900000.00"}]
+            requirements: [{code: TU1131}]
+  # подразделения и роли не ответили — таймаут, анализ идёт дальше
+  - advance: PT3M
+  # ИИ-часть повторена через 15 минут
+  - advance: PT20M
+  - expect:
+      stages: {screening: completed, decision: open}
+      data:
+        documents.0.id: art-1
+        match.aiPending: false
+        match.coverage.sumShare: "1.0000"
+        executorRole: dev-lead
+        analysis.recommendation.decision: go
+      memory: {recalled: [recall-history, recall-company, recall-offerings]}
+      tasks: [{step: go-no-go, assignee: alice, status: open}]
+  - complete: {step: go-no-go, by: alice, output: {decision: no-go, reason: проверка анализа}}
+  - expect: {status: completed, outcome: declined}

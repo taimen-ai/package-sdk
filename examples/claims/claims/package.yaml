@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../../schema/v1/object.schema.json
+# Customer claims: the end-to-end example of package-sdk (TAI-ADR-0062, plan R13).
+#
+# A customer files a claim in a helpdesk. The observer of the integration turns the new
+# ticket into an observation, and the observation starts the process `claim`: a skill
+# classifies the claim, a decision table routes it, a person reviews it, a manager
+# approves a refund above the threshold (never the reviewer), and the reply goes back
+# to the helpdesk only after a person approved it. A ticket reopened after the case was
+# closed is one-off work: the rule `claim-reopened` files a follow-up.
+#
+# Nothing here is known to the core: the domain lives in this package and its
+# integration code (integration/).
+apiVersion: taimen.ai/v1
+kind: Package
+key: claims
+spec:
+  version: 0.1.0
+  displayName: Customer claims
+  description: >-
+    Customer claims from a helpdesk: classification, routing, review, refund approval
+    with separation of duties, a reply approved by a person, and follow-up of reopened
+    tickets.
+  license: Apache-2.0
+  authors: ["The package-sdk authors"]
+  engines:
+    control-plane: ">=0.9,<0.10"
+  knowledge: ["default@1", "claims@1"]
+  variables:
+    CLAIMS_WORKSPACE_ID:
+      kind: workspace
+      description: Root workspace of the claims — the cases, their tasks and the observations of the helpdesk
+    CLAIMS_REFUND_THRESHOLD:
+      kind: integer
+      description: A refund above this amount needs the approval of a claims manager
+      default: "500"
+    HELPDESK_URL:
+      kind: url
+      description: API of the helpdesk the observer polls (the demo helpdesk of the example, or your own)
+      example: http://helpdesk:8080

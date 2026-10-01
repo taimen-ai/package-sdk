@@ -1,0 +1,77 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: plan.constitution_check
+spec:
+  version: '1'
+  description: Проверить, что план фичи отвечает на каждую статью конституции
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      - path
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        path:
+          type: string
+          minLength: 1
+          maxLength: 300
+          pattern: ^[^/\\.][^\\]*\.md$
+        constitution:
+          type: string
+          minLength: 1
+          maxLength: 300
+          default: docs/constitution.md
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - status
+      - gaps
+      - stats
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - ok
+          - gaps
+        gaps:
+          type: array
+          items:
+            type: object
+            required:
+            - kind
+            - line
+            - detail
+            properties:
+              kind:
+                type: string
+              line:
+                type: integer
+              detail:
+                type: string
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.sdd_checks:invoke_plan

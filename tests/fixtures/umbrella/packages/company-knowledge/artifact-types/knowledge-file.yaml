@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: ArtifactType
+key: knowledge-file
+spec:
+  displayName: Файл для базы знаний
+  description: Таблица (XLSX, CSV) или документ для загрузки в базу знаний — содержимое артефакта
+  metadataSchema:
+    type: object
+    properties:
+      filename: {type: string, maxLength: 500}
+      pack: {type: string, maxLength: 200}
+      kind: {type: string, maxLength: 64}

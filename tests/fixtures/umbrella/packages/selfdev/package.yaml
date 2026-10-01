@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Пакет саморазработки платформы (TAI-ADR-0044): типы работы над кодом, скиллы
+# integrations/selfdev и правила. Пакета core больше нет (решение владельца
+# 2026-09-25): ядро доменно-нейтрально, «задача на код» — сущность этого домена.
+# skills/*.yaml генерирует skill-sdk из кода (TAI-ADR-0045): источник истины —
+# декораторы в taimen_selfdev, расхождение ловит integrations/selfdev/tests/test_skill_package.py.
+apiVersion: taimen.ai/v1
+kind: Package
+key: selfdev
+spec:
+  version: 0.19.0
+  displayName: Self-development
+  description: >-
+    Доменные действия цикла саморазработки как скиллы (TAI-ADR-0041: ядро не
+    знает, что такое merge). coding-task принимается критериями типа: ревью
+    человека, затем вливание git.merge@1 (TAI-ADR-0053); submodule-bump —
+    решение, чей approve сдвигает указатель сабмодуля git.bump_submodule@1;
+    devops, oss-publish (в открытую поставку уходят только релизы — semver-теги,
+    oss.check@2 / oss.publish@2, 0.19.0). Правила действуют от имени агента
+    selfdev-rules, наблюдения даёт агент git-connector (0.16.0). Агент coder хостит скиллы
+    process-knowledge и tenders с LLM по подписке Claude (0.17.0); скиллы загрузки базы
+    знаний company-knowledge — knowledge.template@1, knowledge.import_plan@1,
+    knowledge.import_apply@1, knowledge.document_extract@1, knowledge.document_apply@1 (0.18.0).
+  requires: []
+  variables:
+    SELFDEV_REVIEWER_PRINCIPAL:
+      kind: principal
+      description: Ревьюер кода — решает критерий review приёмки coding-task и решения submodule-bump
+    SELFDEV_SKILLS_EXECUTOR:
+      kind: principal
+      description: Principal агента oss-publisher — исполнитель скиллов открытой поставки, ему правила oss-sync назначают работу
+    SELFDEV_SUPERPROJECT_URL:
+      kind: url
+      description: Адрес git суперпроекта — клон для скиллов правил и наблюдений git-connector
+      example: https://github.com/<org>/project-taimen-ai.git
+    SELFDEV_WORKSPACE_ID:
+      kind: workspace
+      description: Workspace проекта саморазработки — сюда правила заводят работу, в нём работают агенты пакета
+    TAIMEN_PUBLIC_URL:
+      kind: url
+      description: Публичный адрес платформы — агент coder ходит к нему по HTTP (httpOrigins)
+      example: https://cp.example.com

@@ -1,0 +1,8 @@
+apiVersion: taimen.ai/v1
+kind: Agent
+key: helpdesk-observer
+spec:
+  displayName: Helpdesk observer
+  identity: {kind: agent}
+  executor: {kind: observer, image: "Not An Image!", params: {entrypoint: "a.b:c"}}
+  placement: none

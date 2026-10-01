@@ -1,0 +1,64 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Регламент изменился → сверка с процессами → задача владельцу процесса
+# (TAI-ADR-0054 п.9, Р17; CP-ADR-0076 §7; FR-055, SC-012).
+#
+# - Триггер — событие ядра knowledge.changed: сверка снимка знаний открыла,
+#   изменила или закрыла документы (payload.changes: [{kind, key, change}]).
+#   Пустая сверка и повтор того же снимка события не дают (ядро).
+# - Правило уровня tenant'а (без workspaceId): событие называет workspace снимка и
+#   доходит до правил этого workspace и правил tenant'а (CP-ADR-0063 §3), поэтому
+#   одно правило слышит базу знаний любого дерева. Задача — в workspace процесса:
+#   fields.workspaceId — шаблон {{item.workspaceId}} (workspaceId опубликованной
+#   версии; поле действия — амендмент CP-ADR-0063, process-packages P012).
+# - Условие не спрашивает ядро: язык условий — только сравнения над событием
+#   (CP-ADR-0063 §2), вызовов нет. Поэтому «ключ есть среди governedBy
+#   опубликованных процессов» проверяет скилл запросом GET
+#   /process-definitions?governedBy=; изменение, на которое никто не ссылается, —
+#   пустой выход скилла и оценка not_matched, видимая в журнале правила.
+# - Скилл process.regulation_check@1 сверяет смысл пункта регламента с элементом
+#   процесса и отдаёт по задаче на пару «процесс + документ + ревизия» со всеми
+#   расхождениями пары (элемент и пункт в каждом). forEach — по задачам, а не по
+#   расхождениям: иначе ключ одной пары у нескольких элементов нашёл бы задачу
+#   первого и потерял остальные.
+# - dedupKey — regulation-drift:<процесс>:<документ>@<ревизия>, его строит скилл
+#   (длинный ключ — с хэшем, ≤ 200 символов). Повтор той же ревизии находит
+#   открытую задачу; закрытая задача новую не блокирует (CP-ADR-0063 §5) — если
+#   ту же ревизию сверить снова после закрытия, задача появится ещё раз.
+# - Исполнитель — владелец процесса (owner, TAI-ADR-0054 п.5): скилл отдаёт первого
+#   кандидата цепочки в форме назначения ядра — id principal'а, agent:<key> или
+#   role:<slug>. Роль означает задачу роли в workspace процесса: её берёт любой, у
+#   кого роль (разрешение role:<slug> в назначении правила — вместе с
+#   fields.workspaceId, P012). Владельца нет — тот, кто опубликовал версию.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: regulation-drift
+spec:
+  description: Регламент изменился — сверка с процессами на нём; расхождение — задача владельцу процесса
+  identity: {agent: process-knowledge-rules}
+  trigger: {kind: event, type: knowledge.changed}
+  condition: {exists: payload.changes.0.key}
+  interpretation:
+    skill: process.regulation_check@1
+    inputs:
+      changes: "{{payload.changes}}"
+      workspaceId: "{{payload.workspaceId}}"
+      snapshotId: "{{payload.snapshotId}}"
+  action:
+    kind: ensure_work
+    taskType: process-regulation-drift
+    forEach: skill.output.tasks
+    dedupKeyTemplate: "{{item.dedupKey}}"
+    fields:
+      title: "{{item.title}}"
+      description: "{{item.description}}"
+      priority: medium
+      workspaceId: "{{item.workspaceId}}"
+      assignee: "{{item.assignee}}"
+      customFields:
+        process: "{{item.process}}"
+        version: "{{item.version}}"
+        document: "{{item.document}}"
+        revision: "{{item.revision}}"
+        elements: "{{item.elements}}"
+        sections: "{{item.sections}}"
+        findings: "{{item.findings}}"

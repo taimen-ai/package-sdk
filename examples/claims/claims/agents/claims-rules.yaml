@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The identity of the rule `claim-reopened`: reads the observation, classifies it and
+# files the follow-up.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: claims-rules
+spec:
+  displayName: Claims rules
+  description: Identity of the work rules of the package claims
+  identity:
+    kind: service
+    permissions: [events.read, tasks.read, tasks.write, skills.invoke]
+    iam:
+      audiences: [control-plane]
+      scopeCeiling: [control-plane:read, control-plane:write]
+  placement: none

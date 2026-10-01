@@ -1,0 +1,89 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Документ в базу знаний — подтверждение полей человеком (TAI-ADR-0056 Р6, FR-007).
+#
+# Задачу заводят консоль, агент или команда taimen-company-knowledge-document: пакет и
+# вид сущности, файл — артефакт knowledge-file. knowledge.document_extract@1 сохраняет
+# документ в базе знаний и кладёт предложенные поля с цитатами в описание, значения — в
+# поле attributes задачи. Человек правит attributes (и при нужде key, title) и решает.
+#
+# approve → knowledge.document_apply@1 (external_write, основание — это решение): поля
+#   задачи, как их оставил человек, — сущностью вида снимком источника
+#   document:<ключ документа> со связью evidenced_by к документу; applied — задача
+#   выполнена. Поле не прошло проверку — комментарий с причиной, задача открыта: поправьте
+#   attributes и запросите решение снова.
+# reject → задача отменяется; документ остаётся в базе знаний, сущность не пишется.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: knowledge-document
+spec:
+  displayName: Knowledge document
+  description: >-
+    Решение: записать поля документа в базу знаний. Поля предлагает ИИ с цитатами,
+    человек проверяет и правит; approve пишет сущность со связью к документу.
+  fieldSchema:
+    type: object
+    required: [pack, kind]
+    additionalProperties: false
+    properties:
+      pack: {type: string, minLength: 3, maxLength: 200}
+      kind: {type: string, pattern: "^[a-z][a-z0-9_]{0,63}$", description: Вид сущности документа}
+      profile: {type: string, maxLength: 64}
+      packs: {type: array, maxItems: 20, items: {type: string, maxLength: 200}}
+      definitions: {type: array, maxItems: 5, items: {type: object}, description: Описания пакетов арендатора}
+      links: {type: array, maxItems: 20, items: {type: object}, description: "Связи {rel, kind, key}"}
+      fileArtifactId: {type: string, maxLength: 64}
+      filename: {type: string, maxLength: 500}
+      documentKey: {type: string, maxLength: 512}
+      textStatus: {type: string, enum: [text, ocr, needs_manual_input]}
+      key: {type: string, maxLength: 512, description: Ключ сущности; пусто — из атрибутов}
+      title: {type: string, maxLength: 500}
+      attributes: {type: object, description: Поля сущности — правит человек перед решением}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: blocked, category: blocked, displayName: Blocked}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, blocked, done, cancelled]}
+      - {from: in_progress, to: [todo, blocked, done, cancelled]}
+      - {from: blocked, to: [todo, in_progress, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema:
+    gates:
+      default:
+        outcomes:
+          approved:
+            - invokeSkill:
+                skill: knowledge.document_apply@1
+                inputs:
+                  documentKey: "$.task.customFields.documentKey!"
+                  workspaceId: "$.task.workspaceId!"
+                  pack: "$.task.customFields.pack!"
+                  kind: "$.task.customFields.kind!"
+                  profile: "$.task.customFields.profile"
+                  packs: "$.task.customFields.packs"
+                  definitions: "$.task.customFields.definitions"
+                  key: "$.task.customFields.key"
+                  title: "$.task.customFields.title"
+                  attributes: "$.task.customFields.attributes!"
+                  links: "$.task.customFields.links"
+                expect: {status: applied}
+                onSuccess:
+                  - comment:
+                      body: "Поля документа записаны в базу знаний: $.invocation.output.key"
+                  - completeTask: {}
+                onFailure:
+                  - comment:
+                      body: |-
+                        Поля документа не записаны: $.invocation.error.code.
+                        $.invocation.error.message
+                        Поправьте поле attributes задачи и запросите решение снова.
+          rejected:
+            - comment:
+                body: "Запись полей документа отклонена: $.approval.comment"
+            - transition: {status: cancelled}

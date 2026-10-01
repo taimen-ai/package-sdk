@@ -1,0 +1,171 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.expiring
+spec:
+  version: '1'
+  description: Истекающие в окне упреждения сущности всех видов со сроком — кому задача
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        ExpiryRule:
+          properties:
+            kind:
+              pattern: ^[a-z][a-z0-9_]{0,63}$
+              title: Kind
+              type: string
+            role:
+              anyOf:
+              - pattern: ^[a-z0-9][a-z0-9-]*$
+                type: string
+              - type: 'null'
+              default: null
+              title: Role
+            leadDays:
+              anyOf:
+              - maximum: 365
+                minimum: 1
+                type: integer
+              - type: 'null'
+              default: null
+              title: Leaddays
+          required:
+          - kind
+          title: ExpiryRule
+          type: object
+      properties:
+        workspaceId:
+          description: Workspace базы знаний
+          minLength: 1
+          title: Workspaceid
+          type: string
+        asOf:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          description: Дата отсчёта (день или время ISO 8601); по умолчанию — сегодня
+          title: Asof
+        packs:
+          description: 'Включённые пакеты онтологии: company@1, procurement@2, tenant:<имя>@<версия>'
+          items:
+            type: string
+          maxItems: 32
+          title: Packs
+          type: array
+        definitions:
+          description: Описания пакетов, которых нет среди встроенных
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+        expiry:
+          description: 'Поверх expiry пакетов: роль и упреждение'
+          items:
+            $ref: '#/$defs/ExpiryRule'
+          maxItems: 64
+          title: Expiry
+          type: array
+        defaultLeadDays:
+          default: 30
+          maximum: 365
+          minimum: 1
+          title: Defaultleaddays
+          type: integer
+        defaultRole:
+          default: knowledge-owner
+          pattern: ^[a-z0-9][a-z0-9-]*$
+          title: Defaultrole
+          type: string
+        graceDays:
+          default: 7
+          description: Сколько дней после истечения ещё ставить задачу
+          maximum: 90
+          minimum: 0
+          title: Gracedays
+          type: integer
+      required:
+      - workspaceId
+      title: ExpiringIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        ExpiringItem:
+          properties:
+            pack:
+              title: Pack
+              type: string
+            kind:
+              title: Kind
+              type: string
+            key:
+              title: Key
+              type: string
+            title:
+              title: Title
+              type: string
+            validUntil:
+              title: Validuntil
+              type: string
+            daysLeft:
+              title: Daysleft
+              type: integer
+            role:
+              title: Role
+              type: string
+            dedupKey:
+              title: Dedupkey
+              type: string
+          required:
+          - pack
+          - kind
+          - key
+          - title
+          - validUntil
+          - daysLeft
+          - role
+          - dedupKey
+          title: ExpiringItem
+          type: object
+      properties:
+        asOf:
+          title: Asof
+          type: string
+        kinds:
+          items:
+            type: string
+          title: Kinds
+          type: array
+        items:
+          items:
+            $ref: '#/$defs/ExpiringItem'
+          title: Items
+          type: array
+        truncated:
+          default: false
+          title: Truncated
+          type: boolean
+        summary:
+          title: Summary
+          type: string
+      required:
+      - asOf
+      - kinds
+      - items
+      - summary
+      title: ExpiringOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.expiry:expiring

@@ -1,0 +1,40 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+# A refund under the threshold needs no approval: review, reply, closed as refunded.
+process: claim
+name: a small refund is reviewed, replied and closed without an approval
+given:
+  principals:
+    claims-officer: [alice]
+    claims-manager: [bob]
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: defect, severity: medium, confidence: 0.9}
+steps:
+  - emit:
+      observation: helpdesk.ticket_created
+      payload:
+        data: {ticketId: T-1001, customerId: C-7, customerName: Northwind Ltd, product: Grinder X2,
+               subject: The grinder stopped working, text: It stopped after a week., amount: 120, currency: EUR}
+  - expect:
+      data: {category: defect, severity: medium, reviewRole: claims-officer}
+      stages: {intake: completed, review: open, reply: not_started}
+      tasks: [{step: review-claim, assignee: "role:claims-officer"}]
+  - complete:
+      step: review-claim
+      by: alice
+      output: {resolution: refund, refundAmount: 120, reply: We refund the grinder in full.}
+  - expect:
+      data: {resolution: refund, refundAmount: 120, reviewedBy: alice}
+      stages: {review: completed, reply: open}
+      tasks: [{step: send-reply, assignee: "role:claims-officer"}]
+  - complete:
+      step: send-reply
+      by: alice
+      output: {ticketId: T-1001, message: We refund the grinder in full.}
+  - expect:
+      status: completed
+      outcome: refunded
+      memory:
+        remembered:
+          - facts: {resolution: refund, refundAmount: 120, reviewedBy: alice}

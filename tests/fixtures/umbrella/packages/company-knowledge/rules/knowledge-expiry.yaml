@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Истечение сроков (TAI-ADR-0056 Р12, FR-022, SC-007): раз в сутки
+# knowledge.expiring@1 находит сущности всех видов со сроком действия включённых пакетов
+# онтологии, срок которых истекает в окне упреждения, и каждая становится задачей роли,
+# ответственной за вид. Дедуп по сущности и дате истечения: повторный запуск не плодит
+# дублей, продлённый и снова истекающий срок — новая работа.
+#
+# Какие пакеты онтологии смотреть — поле packs входа (отраслевой пакет или пакет
+# арендатора добавляется сюда: procurement@2, tenant:<имя>@<версия> с описанием в
+# definitions); упреждение и роль по виду — expiry пакета онтологии, поверх — поле
+# expiry входа, иначе владелец базы знаний и defaultLeadDays.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: knowledge-expiry
+spec:
+  description: Раз в сутки — задача ответственному за каждую сущность, срок действия которой истекает
+  workspaceId: ${KNOWLEDGE_WORKSPACE_ID}
+  identity: {agent: knowledge-rules}
+  trigger: {kind: schedule, type: interval, everySeconds: 86400}
+  interpretation:
+    skill: knowledge.expiring@1
+    inputs:
+      workspaceId: ${KNOWLEDGE_WORKSPACE_ID}
+      asOf: "{{trigger.scheduledAt}}"
+      packs: [company@1]
+      defaultLeadDays: 30
+      graceDays: 7
+  action:
+    kind: ensure_work
+    taskType: knowledge-expiry
+    forEach: skill.output.items
+    dedupKeyTemplate: "knowledge-expiry:{{item.dedupKey}}"
+    fields:
+      title: "Истекает срок: {{item.title}} — до {{item.validUntil}}"
+      priority: medium
+      assignee: "role:{{item.role}}"
+      customFields:
+        pack: "{{item.pack}}"
+        kind: "{{item.kind}}"
+        key: "{{item.key}}"
+        validUntil: "{{item.validUntil}}"
+      description: |
+        Срок действия сущности базы знаний истекает {{item.validUntil}} (осталось дней: {{item.daysLeft}}).
+
+        Вид: {{item.kind}} (пакет {{item.pack}}), ключ: {{item.key}}.
+
+        Что сделать: продлить (документ, договор, поверку) и загрузить новый срок — таблицей,
+        документом или из учётной системы; если сущность больше не нужна — закрыть задачу.
+        Задачу завело правило knowledge-expiry; новый срок — новая задача, не эта.

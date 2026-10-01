@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# notification-service (TAI-ADR-0048/0050/0051 п.7): события и каталог адресатов ядра, привязки каналов и нажатия в IAM, Telegram как вход в беседу харнесса.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: notification-service
+spec:
+  displayName: Taimen Notification Service
+  identity:
+    kind: service
+    permissions:
+    - events.read
+    - approvals.read
+    - tasks.read
+    - principals.read
+    - workspaces.read
+    iam:
+      audiences:
+      - control-plane
+      - iam
+      - human-harness
+      scopeCeiling:
+      - control-plane:read
+      - iam:channel-links
+      - harness:inbound
+  placement: none

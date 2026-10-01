@@ -1,0 +1,12 @@
+apiVersion: taimen.ai/v1
+kind: KnowledgePack
+key: claims
+spec:
+  name: claims
+  version: 1
+  extends: [company@1]
+  kinds:
+    - kind: claim
+      naturalKey: "claim:<number>"
+      attributes:
+        number: {type: string}

@@ -1,0 +1,35 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# База знаний (TAI-ADR-0056 Р15): единственный договор с контрагентом истёк до даты
+# счёта — действующего договора нет, согласует финансовый директор даже небольшую
+# сумму; проверку ведёт бухгалтерия (подразделение контрагента не известно).
+process: invoice-payment
+name: нет действующего договора — финансовый директор
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals:
+    accounting: [1a000000-0000-4000-8000-000000000001, 1a000000-0000-4000-8000-000000000002]
+    finance-director: [1f000000-0000-4000-8000-000000000001]
+mocks:
+  recall:
+    - step: recall-counterparty
+      output:
+        nodes:
+          - {kind: legal_entity, key: "7701234567", anchor: true, title: "ООО «Поставщик»"}
+          - {kind: agreement, key: "agreement:1c:D-1", title: Поставка, attributes: {number: "Д-1", subject: Поставка, validUntil: "2026-06-30"}}
+        edges: [{relation: party_to, from: "7701234567", to: "agreement:1c:D-1"}]
+  skills:
+    notify.send@1:
+      - output: {notificationId: 0e000000-0000-4000-8000-000000000001, deliveries: [{channel: telegram, status: pending}]}
+steps:
+  - emit:
+      observation: invoice.received
+      payload:
+        data: {invoice: "СЧ-2026-302", supplier: "ООО «Поставщик»", supplierInn: "7701234567",
+               amount: 12000, currency: RUB, date: "2026-09-30", uploadedBy: 1a000000-0000-4000-8000-000000000001}
+  - expect:
+      data: {hasAgreement: false, reviewRole: accounting}
+      tasks: [{step: check-invoice, assignee: "role:accounting"}]
+  - complete: {step: check-invoice, by: 1a000000-0000-4000-8000-000000000002, output: {verdict: ok}}
+  - expect: {data: {approverRole: finance-director, routeNote: "Нет действующего договора с контрагентом"}}
+  - approve: {step: approve-payment, by: 1f000000-0000-4000-8000-000000000001, decision: reject}
+  - expect: {status: completed, outcome: rejected}

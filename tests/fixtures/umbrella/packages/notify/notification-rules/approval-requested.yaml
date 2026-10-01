@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Запрос решения (approval.requested) — назначенному решающему с кнопками
+# «Одобрить»/«Отклонить»; исход решения закрывает кнопки уведомления с тем же ключом.
+# Прежнее встроенное поведение сервиса (ADR-0002) как данные — ADR-0005 §8 сервиса,
+# TAI-ADR-0053 п.4. ${TASK_URL_BASE} — база ссылки на задачу в интерфейсе установки.
+apiVersion: taimen.ai/v1
+kind: NotificationRule
+key: approval-requested
+spec:
+  description: >-
+    Назначенному решающему — запрос решения с кнопками; исход решения
+    закрывает кнопки.
+  "on": {type: approval.requested}
+  recipient: {kind: assigned}
+  notification:
+    type: approval.requested
+    title: "Нужно решение: {{task.publicId}} {{task.title}}"
+    body: |-
+      Работа: {{task.publicId}} {{task.title}}
+      Запрашивает: {{payload.requestedBy.displayName}}
+      Комментарий: {{payload.comment}}
+    links:
+      - {label: Открыть задачу, url: "${TASK_URL_BASE}/{{task.publicId}}"}
+    actions: [approvalDecide]
+  dedupKeyTemplate: "control-plane:approval:{{event.entityId}}"
+  close:
+    "on": [approval.approved, approval.rejected, approval.cancelled]

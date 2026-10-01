@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность процесса invoice-payment (CP-ADR-0074 §14): все намерения экземпляра —
+# задачи, согласования, вызовы скилла, наблюдения в память — исполняются полномочиями
+# этого principal'а; он автор задач и событий process.* (actorId).
+#
+# Права — ровно то, что делают шаги процесса:
+# - events.read — событие старта invoice.received;
+# - tasks.read, tasks.write — задачи «проверить счёт» и «оплатить счёт»;
+# - approvals.manage — запрос согласования оплаты держателям роли;
+# - skills.invoke — уведомления notify.send@1;
+# - observations.write — проекция дела в память (контрагент, счёт, заключение).
+# Решать согласования личность не может (approvals.decide нет): решают люди роли.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: invoice-process
+spec:
+  displayName: Invoice payment process
+  description: Личность процесса оплаты счёта поставщика
+  identity:
+    kind: service
+    permissions:
+    - events.read
+    - tasks.read
+    - tasks.write
+    - approvals.manage
+    - skills.invoke
+    - observations.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Роль пакета tenders: согласование крупных закупок, эскалации, подписание контракта.
+apiVersion: taimen.ai/v1
+kind: Role
+key: general-director
+spec:
+  name: Генеральный директор
+  description: >-
+    Согласует цену крупных закупок, получает эскалации сроков, подписывает контракт своей электронной подписью

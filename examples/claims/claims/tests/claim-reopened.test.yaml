@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: rule
+rule: claim-reopened
+name: a reopened ticket is classified and filed as a follow-up for the officers
+given:
+  observation:
+    kind: helpdesk.ticket_reopened
+    content: "T-1001: The grinder stopped working"
+    data: {ticketId: T-1001, version: 3, channel: web, subject: The grinder stopped working,
+           text: The replacement broke too.}
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: defect, severity: medium, confidence: 0.9}
+steps:
+  - expect:
+      result: matched
+      invokeSkill:
+        - skill: claims.classify@1
+          inputs: {subject: The grinder stopped working, text: The replacement broke too.}
+      ensureWork:
+        - type: claim-followup
+          customFields: {ticketId: T-1001, category: defect, severity: medium}

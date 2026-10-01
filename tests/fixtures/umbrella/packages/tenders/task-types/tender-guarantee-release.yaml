@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — компенсации release-application-guarantee и release-contract-guarantee. Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-guarantee-release
+spec:
+  displayName: Освободить обеспечение
+  description: >-
+    Закупка отменена: вернуть обеспечение заявки или исполнения контракта.
+  fieldSchema:
+    type: object
+    required: [released]
+    properties:
+      released: {type: boolean}
+      comment: {type: string, maxLength: 2000}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Закупку отменил заказчик. Освободите обеспечение (заблокированные на специальном счёте средства, независимую гарантию) и отметьте `released`.

@@ -1,0 +1,5 @@
+apiVersion: taimen.ai/v1
+kind: Role
+key: claims-officer
+spec:
+  name: Claims officer

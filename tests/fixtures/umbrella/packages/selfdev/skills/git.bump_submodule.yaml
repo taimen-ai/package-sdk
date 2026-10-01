@@ -1,0 +1,75 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: git.bump_submodule
+spec:
+  version: '1'
+  description: Сдвинуть указатель сабмодуля в основной ветке суперпроекта на одобренную ревизию
+  sideEffects: external_write
+  riskLevel: medium
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      - path
+      - pinned
+      - head
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+          default: main
+        path:
+          type: string
+          minLength: 1
+        pinned:
+          type: string
+          pattern: ^[0-9a-f]{40}$
+        head:
+          type: string
+          pattern: ^[0-9a-f]{40}$
+        decision:
+          type: string
+          minLength: 1
+        message:
+          type: string
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - bumped
+      properties:
+        bumped:
+          type: boolean
+        commit:
+          type: string
+        previous:
+          type: string
+        head:
+          type: string
+        current:
+          type: string
+        reason:
+          enum:
+          - already_current
+          - pointer_moved
+          - unknown_revision
+          - not_submodule
+          - conflict
+        details:
+          type: string
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 3
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.git_bump_submodule:run

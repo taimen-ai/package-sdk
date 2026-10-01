@@ -1,0 +1,31 @@
+apiVersion: taimen.ai/v1
+kind: Process
+key: claim
+spec:
+  version: 1
+  displayName: Claim
+  data:
+    type: object
+    properties:
+      claimId: {type: string}
+      customerId: {type: string}
+      subject: {type: string}
+      kind: {type: string}
+  start:
+    on: {observation: claims.claim_filed}
+    key: event.payload.claimId
+    set: {claimId: event.payload.claimId, customerId: event.payload.customerId}
+  memory:
+    case: {key: data.claimId, title: data.subject}
+    facts: {kind: data.kind}
+    entities:
+      - {kind: customer, key: data.customerId, rel: filed_by}
+  stages:
+    - id: triage
+      steps:
+        - id: history
+          recall:
+            anchors: [{kind: customer, key: data.customerId, via: filed_by}]
+            traverse: [{relation: resolved_by, depth: 1}]
+            kinds: [claim_outcome]
+            where: [{attr: kind, op: eq, value: "'refund'"}]

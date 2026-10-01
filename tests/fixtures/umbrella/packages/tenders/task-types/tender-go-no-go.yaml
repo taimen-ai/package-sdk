@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг go-no-go (стадия decision). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-go-no-go
+spec:
+  displayName: Решение об участии в закупке
+  description: >-
+    Участвовать ли в закупке. Во входе задачи — анализ документации (риски, требования, стоп-факторы) и подсказка по истории заказчика; в контексте — прошлые дела заказчика и уроки с пометкой, из какого дела.
+  fieldSchema:
+    type: object
+    required: [decision, reason]
+    properties:
+      decision: {enum: [go, no-go], description: Участвуем или нет}
+      reason: {type: string, minLength: 1, maxLength: 2000, description: Почему}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Решите, участвует ли организация в закупке.
+
+    1. Прочитайте анализ документации во входе задачи: стоп-факторы, риски, требования.
+    2. Прочитайте контекст: прошлые дела этого заказчика и уроки закрытых дел. Урок показан с делом-источником; найденное по сходству помечено.
+    3. `decision: go` — идём дальше (анализ документации юристом, цена); `no-go` — дело закрывается с исходом declined.
+    4. В `reason` — почему: это попадёт в дело и в разбор после закрытия.

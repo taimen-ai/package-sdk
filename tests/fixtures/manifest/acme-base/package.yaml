@@ -1,0 +1,7 @@
+apiVersion: taimen.ai/v1
+kind: Package
+key: acme-base
+spec:
+  version: 0.2.1
+  displayName: Acme base
+  variables: {}

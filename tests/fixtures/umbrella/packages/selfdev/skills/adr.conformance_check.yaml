@@ -1,0 +1,120 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: adr.conformance_check
+spec:
+  version: '3'
+  description: Сверить Accepted ADR с кодом по пробам ```conformance``` (без LLM)
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - repository
+      additionalProperties: false
+      properties:
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        adrs:
+          type: array
+          items:
+            type: string
+            pattern: ^(TAI|CP|PC|MEM)-[0-9-]+$
+          maxItems: 200
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - ref
+      - results
+      - failing
+      - summary
+      properties:
+        ref:
+          type: string
+        results:
+          type: array
+          items:
+            type: object
+            required:
+            - adr
+            - status
+            - gaps
+            properties:
+              adr:
+                type: string
+              title:
+                type: string
+              status:
+                enum: &id001
+                - implemented
+                - partial
+                - missing
+                - unverifiable
+              adr_status:
+                type: string
+              path:
+                type: string
+              probes:
+                type: array
+              gaps:
+                type: array
+                items:
+                  type: string
+              planned:
+                type: array
+                items:
+                  type: string
+        failing:
+          type: array
+          maxItems: 200
+          items:
+            type: object
+            required:
+            - adr
+            - status
+            - gaps
+            properties:
+              adr:
+                type: string
+              title:
+                type: string
+              status:
+                enum:
+                - partial
+                - missing
+              adr_status:
+                type: string
+              path:
+                type: string
+              probes:
+                type: array
+              gaps:
+                type: array
+                items:
+                  type: string
+              planned:
+                type: array
+                items:
+                  type: string
+        summary:
+          type: object
+          propertyNames:
+            enum: *id001
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.adr_conformance:invoke

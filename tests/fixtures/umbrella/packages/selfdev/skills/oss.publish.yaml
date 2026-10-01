@@ -1,0 +1,85 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: oss.publish
+spec:
+  version: '2'
+  description: Опубликовать релиз компонента в зеркало с тегом и сдвинуть сабмодуль umbrella
+  sideEffects: external_write
+  riskLevel: medium
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - component
+      - sha
+      - release
+      - repository
+      - mirror
+      - umbrella
+      - umbrellaBranch
+      - superproject
+      additionalProperties: false
+      properties:
+        component:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]*$
+        sha:
+          type: string
+          pattern: ^[0-9a-f]{40}$
+        release:
+          type: string
+          pattern: ^[A-Za-z0-9][A-Za-z0-9._+/-]*$
+          maxLength: 200
+        pinned:
+          type: string
+        repository:
+          type: string
+          minLength: 1
+        mirror:
+          type: string
+          minLength: 1
+        umbrella:
+          type: string
+          minLength: 1
+        umbrellaBranch:
+          type: string
+          minLength: 1
+        superproject:
+          type: string
+          minLength: 1
+        superprojectRef:
+          type: string
+          minLength: 1
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - component
+      - sha
+      - release
+      - tagPushed
+      - umbrellaCommit
+      properties:
+        component:
+          type: string
+        sha:
+          type: string
+        release:
+          type: string
+        mirrorCommit:
+          type: string
+        tagPushed:
+          type: boolean
+        umbrellaCommit:
+          type: string
+    idempotency: natural
+    timeoutSeconds: 900
+    retryPolicy:
+      maxAttempts: 3
+      backoffSeconds: 60
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.oss_sync:invoke_publish

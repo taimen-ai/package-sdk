@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг sign-contract (стадия contract). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-contract-sign
+spec:
+  displayName: Подписать контракт
+  description: >-
+    Подписание контракта — только человеком своей электронной подписью (FR-044).
+  fieldSchema:
+    type: object
+    required: [signedWithOwnSignature, signedAt]
+    properties:
+      signedWithOwnSignature: {const: true, description: Контракт подписан моей электронной подписью}
+      signedAt: {type: string, format: date-time}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Подпишите проект контракта на площадке своей электронной подписью в срок (ч. 3 ст. 51 44-ФЗ); обеспечение исполнения должно быть предоставлено. Факт заключения процесс подтвердит по реестру контрактов ЕИС.

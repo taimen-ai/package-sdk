@@ -1,0 +1,318 @@
+name: CI
+
+# The same make targets as the executor's checks (.agents/runner.yaml).
+# control-plane, skill-sdk and platform-auth-sdk are path dependencies of the
+# extras (flat layout, ADR-0029), so they are checked out next to this
+# repository. uv.lock follows the core revision pinned by the umbrella; set
+# CONTROL_PLANE_REF to that revision when it is not the default branch (`main`).
+# The fallback addresses are the public mirror's: <owner>/control-plane,
+# <owner>/skill-sdk, <owner>/platform-auth-sdk and taimen-ai/taimen; a fork with other
+# repository names sets the *_REPO variables. No job refers to a feature branch.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    # labeled: the label `stand` asks for the stand job of the example on a pull request;
+    # any other label runs nothing (the jobs below skip it, and it cancels no run)
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+  schedule:
+    - cron: "17 2 * * *"  # nightly: the stand job of the example
+
+permissions:
+  contents: read
+
+concurrency:
+  # A label other than `stand` gets a group of its own: its empty run cancels nothing.
+  group: >-
+    ${{ github.workflow }}-${{ github.ref }}${{ github.event.action == 'labeled'
+    && github.event.label.name != 'stand' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    if: github.event.action != 'labeled' || github.event.label.name == 'stand'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: package-sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package-sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.CONTROL_PLANE_REPO || format('{0}/control-plane', github.repository_owner) }}
+          ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
+          ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
+          persist-credentials: false
+          path: control-plane
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
+          persist-credentials: false
+          path: skill-sdk
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
+          persist-credentials: false
+          path: platform-auth-sdk
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: package-sdk/uv.lock
+      - run: make install
+      - run: make lint
+      - run: make typecheck
+      - run: make test
+
+  # The end-to-end example (examples/claims, FR-035): its whole test pyramid in the
+  # sandbox — scenarios of the process, the work rule and the task type run by the code
+  # of the core; the rule and task type scenarios need an empty PostgreSQL.
+  example-sandbox:
+    if: github.event.action != 'labeled' || github.event.label.name == 'stand'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: package-sdk
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: sandbox
+          POSTGRES_DB: sandbox
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: package-sdk
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.CONTROL_PLANE_REPO || format('{0}/control-plane', github.repository_owner) }}
+          # the default branch of the core; CONTROL_PLANE_REF pins a tag of a core release
+          ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
+          ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
+          path: control-plane
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
+          path: skill-sdk
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
+          path: platform-auth-sdk
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: package-sdk/uv.lock
+      - run: make install
+      - name: package-sdk test examples/claims/claims (sandbox)
+        env:
+          PACKAGE_SDK_SANDBOX_DATABASE_URL: postgresql://postgres:sandbox@localhost:5432/sandbox
+        run: uv run package-sdk test examples/claims/claims --env /dev/null
+      - name: The example, its demo helpdesk and the neutrality guard of the core
+        env:
+          PACKAGE_SDK_SANDBOX_DATABASE_URL: postgresql://postgres:sandbox@localhost:5432/sandbox
+        run: uv run pytest -q tests/test_example_claims.py
+
+  # Whether a pull request touches what the stand job checks: the example, the
+  # installation (plan, apply, sources, the package model and manifest), the tests and the
+  # sandbox, the connector, the images, the dependencies or the workflows (a plain git
+  # diff, no action).
+  changes:
+    if: >-
+      github.event_name == 'pull_request'
+      && (github.event.action != 'labeled' || github.event.label.name == 'stand')
+    runs-on: ubuntu-latest
+    outputs:
+      stand: ${{ steps.paths.outputs.stand }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - id: paths
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          if git diff --name-only "$BASE"...HEAD | grep -qE \
+              '^(examples/claims/|pyproject\.toml$|uv\.lock$|src/package_sdk/(install|connector)/|src/package_sdk/(apply|source|model|manifest|testing|sandbox)\.py$|src/package_sdk/image[^/]*$|\.github/workflows/)'; then
+            echo "stand=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stand=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # The example on a clean installation of the open supply (SC-004): the compose of the
+  # public umbrella with the core of this revision, the example installed by plan and
+  # apply, a claim filed in the demo helpdesk, the case closed with evidence. The same
+  # scenarios then run by the server (/packages:test) — the other executor of the
+  # sandbox's tests.
+  #
+  # Runs on main, tags, by hand and nightly; on a pull request — with the label `stand`
+  # or when it touches the paths of the job `changes`. Actions run on the public mirror
+  # only: there this job is the check of SC-004 (S034). `!cancelled()`, not `always()`:
+  # the job waits for `changes`, which is skipped outside pull requests, and a cancelled
+  # run must not start an hour of the stand.
+  example-stand:
+    needs: [changes]
+    if: >-
+      !cancelled() && (github.event_name != 'pull_request'
+      || (github.event.action != 'labeled' || github.event.label.name == 'stand')
+      && (contains(github.event.pull_request.labels.*.name, 'stand')
+      || needs.changes.outputs.stand == 'true'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      STAND_DIR: ${{ github.workspace }}/stand
+      WORK_DIR: ${{ github.workspace }}/claims-work
+      EXAMPLE_DIR: ${{ github.workspace }}/package-sdk/examples/claims
+      E2E: uv run python examples/claims/stand/e2e.py
+      SERVER: http://127.0.0.1:18000
+    defaults:
+      run:
+        working-directory: package-sdk
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          path: package-sdk
+      # The open supply: the public umbrella and its component submodules.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.OPEN_SUPPLY_REPO || 'taimen-ai/taimen' }}
+          ref: ${{ vars.OPEN_SUPPLY_REF }}
+          submodules: recursive
+          path: stand
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.CONTROL_PLANE_REPO || format('{0}/control-plane', github.repository_owner) }}
+          # the default branch of the core; CONTROL_PLANE_REF pins a tag of a core release
+          ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
+          ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
+          path: control-plane
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
+          path: skill-sdk
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
+          path: platform-auth-sdk
+      # The core the SDK is tested against replaces the pinned one: package plans, the
+      # tests of rules and task types and executor.image are newer than the last release.
+      - name: The core of this revision in the stand
+        working-directory: ${{ github.workspace }}
+        run: |
+          rm -rf stand/control-plane stand/platform-auth-sdk
+          cp -a control-plane stand/control-plane
+          cp -a platform-auth-sdk stand/platform-auth-sdk
+          git -C stand/control-plane log -1 --format='core: %H %s' | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: package-sdk/uv.lock
+      - run: make install
+
+      - name: Stand up (make secrets, make up PROFILES="core notify")
+        working-directory: ${{ env.STAND_DIR }}
+        run: |
+          make secrets
+          sudo chown 10001:10001 secrets/*.pem && sudo chmod 600 secrets/*.pem
+          make up PROFILES="core notify"
+          for i in $(seq 1 60); do make smoke >/dev/null 2>&1 && break; sleep 5; done
+          make smoke
+      - name: make bootstrap
+        working-directory: ${{ env.STAND_DIR }}
+        run: make bootstrap
+      # The operator registers the ontologies of the example (CP_KNOWLEDGE_PACK_ADMINS);
+      # the core and the notification service pick up the accounts bootstrap issued.
+      - name: Restart the core with the operator as the ontology administrator
+        working-directory: ${{ env.STAND_DIR }}
+        run: |
+          state="deploy/state/$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' .env).json"
+          operator=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['cpOperatorPrincipalId'])" "$state")
+          tenant=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['iamTenantId'])" "$state")
+          sed -i "s|^CP_KNOWLEDGE_PACK_ADMINS=.*|CP_KNOWLEDGE_PACK_ADMINS=[\"$operator\"]|; s|^IAM_TENANT_ID=.*|IAM_TENANT_ID=$tenant|" .env
+          docker compose --profile core --profile notify up -d control-plane-api control-plane-worker context-adapter notification-service
+          for i in $(seq 1 60); do make smoke >/dev/null 2>&1 && break; sleep 5; done
+          make smoke
+
+      - name: The demo helpdesk and the stub model on the network of the stand
+        run: |
+          mkdir -p "$WORK_DIR" && chmod 700 "$WORK_DIR"
+          python3 -c "import secrets; print(secrets.token_urlsafe(24))" > "$WORK_DIR/helpdesk-token"
+          network=$(sed -n 's/^TAIMEN_NETWORK=//p' "$STAND_DIR/.env")
+          docker run -d --name helpdesk --network "$network" -p 127.0.0.1:18095:8080 \
+            -e HELPDESK_TOKEN="$(cat "$WORK_DIR/helpdesk-token")" \
+            -v "$EXAMPLE_DIR/helpdesk:/app:ro" python:3.12-slim \
+            python /app/demo_helpdesk.py --host 0.0.0.0 --port 8080 --data /tmp/helpdesk
+          docker run -d --name stub-model --network "$network" \
+            -v "$EXAMPLE_DIR/stand:/app:ro" python:3.12-slim python /app/stub_model.py --host 0.0.0.0 --port 8081
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18095/healthz && break; sleep 2; done
+
+      # The platform ships base images for observers and executors; the job builds them
+      # from the checkouts, then the images of the example from its Dockerfiles, as the
+      # author's CI does (package-sdk image …).
+      - name: Images of the example
+        working-directory: ${{ github.workspace }}
+        run: |
+          docker build -f package-sdk/examples/claims/stand/observer-base.Dockerfile \
+            --build-context package-sdk=package-sdk --build-context client=control-plane/client \
+            -t claims-stand/observer-base:ci package-sdk/examples/claims/stand
+          docker build -f package-sdk/examples/claims/stand/runner-base.Dockerfile \
+            --build-context control-plane=control-plane --build-context auth=platform-auth-sdk \
+            --build-context skill-sdk=skill-sdk --build-context llm=stand/platform-llm \
+            -t claims-stand/runner-base:ci package-sdk/examples/claims/stand
+          cd package-sdk/examples/claims/claims
+          docker build --build-arg BASE_IMAGE=claims-stand/observer-base:ci -f Dockerfile \
+            -t registry.example.com/claims/helpdesk-observer:0.1.0 .
+          docker build --build-arg RUNNER_IMAGE=claims-stand/runner-base:ci -f Dockerfile.skills \
+            -t registry.example.com/claims/claims-skills:0.1.0 .
+
+      - name: The operator's credential and the variables of the installation
+        run: |
+          $E2E operator
+          $E2E env
+      # The scenarios of the sandbox, run by the core of the stand (/packages:test) before
+      # the example is installed: the other executor of the same tests.
+      - name: The same scenarios by the server (/packages:test)
+        run: |
+          export CP_TOKEN=$($E2E token control-plane)
+          echo "::add-mask::$CP_TOKEN"
+          uv run package-sdk test examples/claims/claims --server "$SERVER" --env "$WORK_DIR/claims.env"
+      # package-sdk plan as the author runs it; apply asks a person in a terminal, and the
+      # operator of this stand is the job: the same apply through the library, with the
+      # plan in the log. Then the plan again: nothing is left to change.
+      - name: Install the example (package-sdk plan, apply)
+        run: $E2E install
+      - name: Agents of the example (the part of a node)
+        run: $E2E agents
+      - name: A claim filed in the helpdesk is closed with evidence
+        run: $E2E scenario
+
+      - name: Logs on failure
+        if: failure()
+        working-directory: ${{ env.STAND_DIR }}
+        run: |
+          for name in claims-helpdesk-observer claims-claims-skills helpdesk stub-model; do
+            echo "== $name"; docker logs --tail 200 "$name" 2>&1 || true
+          done
+          docker compose --profile "*" logs --tail 200

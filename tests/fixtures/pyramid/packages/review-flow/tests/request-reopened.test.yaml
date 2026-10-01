@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+subject: rule
+rule: request-reopened
+name: a reopened request is classified and filed for approval
+given:
+  observation:
+    kind: request.reopened
+    content: the answer did not help
+    data: {request: R-2, channel: web}
+mocks:
+  skills:
+    request.classify@1:
+      - output: {category: complaint, confidence: 0.9}
+steps:
+  - expect:
+      result: matched
+      invokeSkill:
+        - skill: request.classify@1
+          inputs: {text: the answer did not help}
+      ensureWork:
+        - type: request-approval
+          customFields: {request: R-2, category: complaint}

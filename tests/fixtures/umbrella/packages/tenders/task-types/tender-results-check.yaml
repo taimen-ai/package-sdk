@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг check-results (стадия results). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-results-check
+spec:
+  displayName: Проверить итоги вручную
+  description: >-
+    Протокол итогов не пришёл из ЕИС вовремя — итоги проверяет человек.
+  fieldSchema:
+    type: object
+    required: [won]
+    properties:
+      won: {type: boolean}
+      winnerPrice: {type: number}
+      protocolDate: {type: string, format: date-time}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Протокол подведения итогов не пришёл из ЕИС в ожидаемый срок. Проверьте итоги на площадке или в ЕИС и заполните результат.

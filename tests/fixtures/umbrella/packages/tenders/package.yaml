@@ -1,0 +1,46 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Тендеры по 44-ФЗ (фича process-packages, TAI-ADR-0054). 0.1.0 — источник наблюдений:
+# агент eis-connector (P022). 0.2.0 — процесс tender от извещения до контракта (P023):
+# типы задач шагов, роли, таблицы deadlines-44fz / approval-thresholds /
+# go-no-go-advice, личность процесса tenders-process, скилл tender.analyze_docs@1
+# (код — integrations/tenders), тип артефакта procurement-document, правило
+# уведомления об эскалации, тесты tests/*.test.yaml. 0.3.0 — первичный анализ со знанием
+# компании (TAI-ADR-0056 Р9, K023): recall о компании, tender.match_items@1,
+# tender.check_requirements@1 (справочник кодов требований — данные интеграции),
+# tender.analyze_docs@2 по текстам документов, повтор ИИ-части, исполнитель по профилю работ.
+#
+# Нужно установке (packages/README.md): ${TENDERS_WORKSPACE_ID} — workspace «Тендеры»;
+# ${TENDERS_ESCALATION_PRINCIPAL_ID} — кому уведомления об эскалациях сроков;
+# ${TENDERS_COMPANY_INN} — ИНН организации компании (якорь памяти о компании); пакеты
+# онтологии памяти process-knowledge@1, company@1 и procurement@2 включены для дерева workspace
+# (taimen-tenders-pack); регламент закупок организации загружен в базу знаний
+# документом с ключом regulation:purchasing (пункты 2–7), 44-ФЗ — law:44-fz;
+# хостинг local-скиллов с пакетом taimen_tenders и LLM инсталляции.
+#
+# В установку staging пакет не входит, пока нет узла fleet с доступом к ЕИС
+# (метка eis-access: российский хостинг, с которого открывается
+# int.zakupki.gov.ru) и токена ЕИС владельца (секрет узла eis-token).
+apiVersion: taimen.ai/v1
+kind: Package
+key: tenders
+spec:
+  version: 0.3.0
+  displayName: Tenders
+  description: >-
+    Закупки по 44-ФЗ из ЕИС: коннектор eis-connector наблюдает извещения,
+    изменения, отмены, разъяснения, протоколы, приостановки и контракты
+    (наблюдения procurement.*, документы — артефакты-ссылки) в workspace
+    тендеров; процесс tender ведёт закупку от извещения до контракта с памятью о
+    заказчике, согласованием цены по порогу, подачей и подписанием человеком.
+  requires: [process-knowledge, platform-calendars]
+  variables:
+    TENDERS_COMPANY_INN:
+      kind: string
+      description: ИНН организации компании — якорь памяти о компании в процессе tender
+      example: "7700000000"
+    TENDERS_ESCALATION_PRINCIPAL_ID:
+      kind: principal
+      description: Кому уведомления об эскалациях сроков закупки
+    TENDERS_WORKSPACE_ID:
+      kind: workspace
+      description: Workspace «Тендеры» — наблюдения ЕИС, экземпляры процесса tender и задачи его шагов

@@ -1,0 +1,48 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Источник наблюдений git (TAI-ADR-0053 п.3, TAI-ADR-0036): коннектор — агент с видом
+# исполнителя git-connector. Что наблюдать — только здесь (executor.params): узел fleet
+# запускает образ коннектора, тот читает свою ревизию (GET /agents/me) и при новой
+# выходит с кодом 75. Наблюдения repo.commit_observed, adr.registry_observed и
+# ci.run_observed идут в workspace work.workspace (POST /observations), снимки
+# контрактов — в память через ядро (POST /knowledge/snapshots); обоим нужно
+# observations.write на workspace. tasks.read — по plan (Р3) для чтения контекста работы.
+# Курсор — в томе реплики, токен GitHub (чтение Actions) — секрет узла github-token.
+#
+# Работает на узле staging (deploy/fleet/staging) с выкатки declarative-cycle; прежний
+# сервис git-connector снят из compose, его PAT отозван.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: git-connector
+spec:
+  displayName: Git connector
+  description: Наблюдения за репозиториями платформы для правил selfdev
+  identity:
+    kind: agent
+    permissions:
+    - observations.write
+    - tasks.read
+  work:
+    workspace: ${SELFDEV_WORKSPACE_ID}
+  executor:
+    kind: git-connector
+    params:
+      repositories:
+      - {name: control-plane, url: "https://git.example.com/acme/taimen-control-plane.git"}
+      - {name: memory-service, url: "https://git.example.com/acme/taimen-memory-service.git", branch: master}
+      - {name: iam-service, url: "https://git.example.com/acme/taimen-iam-service.git"}
+      - {name: notification-service, url: "https://git.example.com/acme/taimen-notification-service.git"}
+      - {name: project-taimen-ai, url: "${SELFDEV_SUPERPROJECT_URL}"}
+      observe: [commits, adrRegistry, ciRuns]
+      registryRepository: project-taimen-ai
+      ciRepository: acme/umbrella
+      intervalSeconds: 300
+      knowledgeSnapshots: true
+  placement:
+    requires:
+    - staging
+    secrets:
+    - github-token
+    resources:
+      cpus: 1
+      memoryMb: 384
+  state: running

@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# A customer reopened a ticket after the reply: the case is closed, the claim needs
+# one more look. That is one-off work, not a new case — a rule, not a process
+# (rules.md, "Rule or process"). The rule classifies the text again and files a
+# follow-up for the claims officers; a reopened internal ticket is not a claim.
+#
+# The helpdesk reopens only a ticket that is `closed` or `answered`. `closed` is what the
+# reply of the case leaves (helpdesk.reply@1 closes the ticket), `answered` is a reply
+# that kept the ticket open — not a resolved case. The rule does not tell the two apart:
+# a reopened ticket is a follow-up either way, and one open follow-up per ticket.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: claim-reopened
+spec:
+  description: A reopened ticket of a resolved claim is classified and filed as a follow-up
+  identity: {agent: claims-rules}
+  workspaceId: ${CLAIMS_WORKSPACE_ID}
+  trigger: {kind: observation, type: helpdesk.ticket_reopened}
+  condition:
+    and:
+      - {exists: payload.data.ticketId}
+      - {ne: [{var: payload.data.channel}, internal]}
+  interpretation:
+    skill: claims.classify@1
+    inputs: {subject: "{{payload.data.subject}}", text: "{{payload.data.text}}"}
+  action:
+    kind: ensure_work
+    taskType: claim-followup
+    # One open follow-up per ticket: the same ticket reopened again joins it.
+    dedupKeyTemplate: "claim-reopened:{{payload.data.ticketId}}"
+    fields:
+      title: "Follow up reopened claim {{payload.data.ticketId}}"
+      assignee: "role:claims-officer"
+      customFields:
+        ticketId: "{{payload.data.ticketId}}"
+        category: "{{skill.output.category}}"
+        severity: "{{skill.output.severity}}"

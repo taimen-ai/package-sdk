@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Роль пакета tenders: владелец процесса tender (owner), go/no-go, расчёт цены, заявка и подача.
+apiVersion: taimen.ai/v1
+kind: Role
+key: tender-lead
+spec:
+  name: Руководитель тендерного отдела
+  description: >-
+    Ведёт закупки: решение об участии, расчёт цены, подготовка и подача заявки своей электронной подписью; владелец процесса tender

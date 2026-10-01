@@ -1,0 +1,22 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Понедельник 10:00: срок рассмотрения — 8 рабочих часов, понедельник 18:00
+# (предупреждение в 16:00); срок процесса — 3 рабочих дня, четверг 10:00
+# (предупреждение в среду 10:00).
+process: request-sla
+name: the review is late, the process is in time
+given:
+  clock: "2026-10-05T10:00:00+03:00"
+  principals: {reviewer: [alice]}
+steps:
+  - emit:
+      observation: request.submitted
+      payload: {id: R-1}
+  - expect:
+      tasks: [{step: review-request}]
+      sla: {review-request: ok, process: ok}
+  - advance: PT6H
+  - expect: {events: [process.sla_warning], sla: {review-request: warning, process: ok}}
+  - advance: PT2H
+  - expect: {events: [process.sla_breached], sla: {review-request: breached}}
+  - complete: {step: review-request, by: alice, output: {decision: approved}}
+  - expect: {status: completed, outcome: reviewed, sla: {process: ok}}

@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: request-review
+spec:
+  displayName: Request review
+  description: A review of a request
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done

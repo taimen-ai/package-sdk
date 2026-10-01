@@ -1,0 +1,13 @@
+apiVersion: taimen.ai/v1
+kind: Agent
+key: sample-feed-observer
+spec:
+  displayName: Sample feed observer
+  identity: {kind: agent, permissions: [observations.write]}
+  executor:
+    kind: observer
+    params:
+      entrypoint: "sample_feed.observer:observe"
+      intervalSeconds: 60
+      config: {pageSize: 2}
+  placement: {requires: [sample-feed-access], secrets: [sample-feed-token]}

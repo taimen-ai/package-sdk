@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# В сценариях отвечает заглушка (mocks.skills), реализация не вызывается.
+apiVersion: taimen.ai/v1
+kind: Skill
+key: request.classify
+spec:
+  version: "1"
+  description: The category of a request by its text
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      type: object
+      properties:
+        text: {type: string}
+      required: [text]
+      additionalProperties: false
+    outputs:
+      type: object
+      properties:
+        category: {enum: [complaint, question, other]}
+        confidence: {type: number}
+      required: [category]
+    implementation:
+      protocol: local
+      entrypoint: review_base.classify:run

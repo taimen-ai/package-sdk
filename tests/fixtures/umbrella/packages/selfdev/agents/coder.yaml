@@ -1,0 +1,143 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Кодовый исполнитель control-plane; исполняет и local-скиллы selfdev (кроме oss.*),
+# а с 0.17.0 — скиллы process-knowledge (process.regulation_check@1,
+# process.retrospective@1) и tenders (tender.analyze_docs@1): их ctx.llm — Claude по
+# подписке этого же агента (SKILL_LLM_PROVIDER=claude-code задаёт исполнитель
+# claude-code узла, deploy/fleet/laptop/node.yaml; решение владельца 2026-09-28).
+# Агент описанием (TAI-ADR-0052): личность, работа, исполнитель, рабочая копия и
+# размещение; запускает платформа на узле fleet.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: coder
+spec:
+  displayName: Autonomous coder (control-plane)
+  identity:
+    kind: agent
+    permissions:
+    - approvals.manage
+    - approvals.read
+    - artifacts.read
+    - artifacts.write
+    - claims.manage
+    - events.read
+    - goals.read
+    - goals.write
+    - observations.write
+    # process.regulation_check@1 читает GET /process-definitions?governedBy= своим credential
+    - processes.read
+    - projects.read
+    - rules.read
+    - sessions.open
+    - skills.execute
+    - task_types.read
+    - tasks.claim
+    - tasks.read
+    - tasks.write
+    - workspaces.read
+  work:
+    workspace: ${SELFDEV_WORKSPACE_ID}
+    onlyAssigned: true
+  executor:
+    kind: claude-code
+    params:
+      model: claude-opus-5-5
+      permissionMode: bypassPermissions
+      timeoutSeconds: 10800
+    instructions: |
+      # Соглашения для агента-исполнителя control-plane
+
+      Этот текст добавляется к каждому prompt исполнителя (`CONTROL_PLANE_CLAUDE_PROMPT_FILE`).
+      Правится без перезапуска контейнера.
+
+      ## Среда
+
+      - Рабочая копия — текущий каталог (`control-plane`). Соседи `../platform-auth-sdk` и
+        `../memory-service` стоят на ревизиях, закреплённых суперпроектом, и доступны
+        **только для чтения**. Правки вне control-plane не делай: сделай свою часть, а
+        остальное опиши в отчёте.
+      - **Контракт другого сервиса не выдумывай.** Если control-plane вызывает memory-service,
+        возьми путь, тело и ответ из его кода (`../memory-service/src/platform_memory/server/`,
+        модели запросов pydantic) и закрепи contract-тестом против этой модели. Фейк,
+        который принимает любое тело, не считается проверкой.
+      - Тестовая PostgreSQL уже запущена рядом, адрес — в `CP_TEST_DATABASE_URL`.
+        Docker внутри нет: `docker compose --profile test …` не нужен и не сработает.
+      - Полный прогон, как в CI: `uv run ruff check . && uv run ruff format --check . &&
+        uv run pytest -q tests/unit tests/client tests/integration tests/concurrency`.
+        Миграции Alembic проверяются интеграционными тестами — прогоняй их обязательно,
+        если меняешь модели или `migrations/`.
+      - Тестовая база одна на весь раннер: **одновременно — только один прогон тестов**, и
+        не в фоне. Два прогона в одну базу блокируют друг друга и висят без вывода
+        (2026-09-25: два полных набора простояли 11 минут). Пока идёт прогон, второй не
+        запускай; если прогон молчит дольше нескольких минут — останови его и разберись,
+        а не запускай новый.
+
+      ## Правила
+
+      - Архитектурные решения — в ADR (`docs/adr/`, ряд CP). Меняешь контракт API, схему
+        БД или поведение, описанное в ADR, — обнови или дополни ADR в том же коммите.
+      - Номер нового ADR — следующий свободный в `docs/adr/` на `origin/main` на момент
+        коммита: параллельные ветки уже занимали один номер (0056).
+      - Документация — на русском; комментарии в коде — как в окружающем коде (в
+        control-plane — английские, ruff RUF003 запрещает кириллицу в комментариях), имена API и сущностей — на английском.
+      - Не коммить секреты, локальные абсолютные пути, `.env`, артефакты сборки.
+      - Не трогай `main` и чужие ветки: демон сам коммитит и публикует ветку задачи.
+      - Не делай того, чего нет в задаче. Найденное попутно — в отчёт, а не в код.
+
+      ## Отчёт
+
+      Первой строкой — что сделано, одной фразой. Дальше: изменённые места, какие тесты
+      прогнаны и с каким результатом, что осталось или требует решения человека. Ревью
+      делает человек через approval, поэтому отчёт должен позволять проверить работу
+      без повторного исследования.
+  workingCopy:
+    repository: https://git.example.com/acme/taimen-control-plane.git
+    directory: control-plane
+    baseRef: main
+    neighbours:
+      platform-auth-sdk: https://git.example.com/acme/taimen-platform-auth-sdk.git
+      memory-service: https://git.example.com/acme/taimen-memory-service.git
+    superproject: https://git.example.com/acme/umbrella.git
+    publish: true
+  skills:
+    protocols:
+    - local
+    - http
+    local:
+    - taimen_selfdev.adr_conformance:invoke
+    - taimen_selfdev.authz_coverage:invoke
+    - taimen_selfdev.docs_drift:invoke
+    - taimen_selfdev.git_bump_submodule:run
+    - taimen_selfdev.git_merge:run
+    - taimen_selfdev.migrations_check:invoke
+    - taimen_selfdev.sdd_checks:invoke_design
+    - taimen_selfdev.sdd_checks:invoke_plan
+    - taimen_selfdev.sdd_checks:invoke_spec
+    - taimen_selfdev.submodule_lag:invoke
+    - taimen_selfdev.tasks_check:invoke
+    - taimen_process_knowledge.regulation_check:invoke
+    - taimen_process_knowledge.retrospective:invoke
+    - taimen_tenders.analyze_docs:invoke
+    - taimen_tenders.match_items:invoke
+    - taimen_tenders.check_requirements:invoke
+    - taimen_company_knowledge.template_skill:template
+    - taimen_company_knowledge.import_skills:import_plan
+    - taimen_company_knowledge.import_skills:import_apply
+    - taimen_company_knowledge.document_skills:document_extract
+    - taimen_company_knowledge.document_skills:document_apply
+    - taimen_company_knowledge.expiry:expiring
+    httpOrigins:
+    - ${TAIMEN_PUBLIC_URL}
+    audiences:
+    - notification-service
+  placement:
+    requires:
+    - claude-subscription
+    - repos
+    secrets:
+    - claude-oauth-token
+    - github-token
+    resources:
+      cpus: 2
+      memoryMb: 4096
+    drainSeconds: 14400
+  state: running

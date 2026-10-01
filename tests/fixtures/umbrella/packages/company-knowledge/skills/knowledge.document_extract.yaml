@@ -1,0 +1,195 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.document_extract
+spec:
+  version: '1'
+  description: Сохранить документ в базе знаний и предложить поля сущности с цитатами
+  sideEffects: external_write
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Link:
+          properties:
+            rel:
+              pattern: ^[a-z][a-z0-9_]{0,63}$
+              title: Rel
+              type: string
+            kind:
+              pattern: ^[a-z][a-z0-9_]{0,63}$
+              title: Kind
+              type: string
+            key:
+              maxLength: 512
+              minLength: 1
+              title: Key
+              type: string
+          required:
+          - rel
+          - kind
+          - key
+          title: Link
+          type: object
+      properties:
+        fileArtifactId:
+          minLength: 1
+          title: Fileartifactid
+          type: string
+        workspaceId:
+          minLength: 1
+          title: Workspaceid
+          type: string
+        pack:
+          title: Pack
+          type: string
+        kind:
+          description: Вид сущности документа
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          title: Kind
+          type: string
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Profile
+        packs:
+          items:
+            type: string
+          title: Packs
+          type: array
+        definitions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+        filename:
+          default: ''
+          title: Filename
+          type: string
+        title:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Title
+        links:
+          description: Связи документа с сущностями
+          items:
+            $ref: '#/$defs/Link'
+          title: Links
+          type: array
+      required:
+      - fileArtifactId
+      - workspaceId
+      - pack
+      - kind
+      title: DocumentIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Proposal:
+          properties:
+            key:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Key
+            title:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Title
+            fields:
+              items:
+                $ref: '#/$defs/ProposedField'
+              title: Fields
+              type: array
+          title: Proposal
+          type: object
+        ProposedField:
+          properties:
+            field:
+              title: Field
+              type: string
+            value:
+              default: null
+              title: Value
+            quote:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Quote
+            page:
+              anyOf:
+              - type: integer
+              - type: 'null'
+              default: null
+              title: Page
+            confidence:
+              default: medium
+              enum:
+              - high
+              - medium
+              - low
+              title: Confidence
+              type: string
+          required:
+          - field
+          title: ProposedField
+          type: object
+      properties:
+        documentKey:
+          title: Documentkey
+          type: string
+        textStatus:
+          enum:
+          - text
+          - ocr
+          - needs_manual_input
+          title: Textstatus
+          type: string
+        chunks:
+          title: Chunks
+          type: integer
+        proposal:
+          $ref: '#/$defs/Proposal'
+        attributes:
+          additionalProperties: true
+          description: Предложенные значения — форма задачи
+          title: Attributes
+          type: object
+        note:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Note
+        summary:
+          title: Summary
+          type: string
+      required:
+      - documentKey
+      - textStatus
+      - chunks
+      - proposal
+      - attributes
+      - summary
+      title: ExtractOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.document_skills:document_extract

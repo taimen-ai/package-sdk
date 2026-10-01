@@ -1,0 +1,91 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Трудный путь к контракту: юрист опоздал (эскалация), заказчик не ответил на запрос
+# разъяснений до срока (ветка таймаута), память о ценах не ответила (таймаут recall).
+# После победы (обеспечения исполнения извещение не требует) — протокол разногласий:
+# срок подписания сдвигается на рассмотрение разногласий заказчиком (ст. 51 ч. 3–4
+# 44-ФЗ); подписание с эскалацией; контракт в реестре ЕИС не появился за 20 дней —
+# дело закрыто с пометкой, что заключение не подтверждено.
+process: tender
+name: протокол разногласий, эскалации и неподтверждённый контракт
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {step: recall-history, output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000021"
+          purchase:
+            number: "0000000000026000021"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка ИС
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "2000000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: да}}
+  - advance: until:legal-review
+  - expect: {events: [process.escalated]}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: true, questions: ["Сроки этапов?"]}}
+  - complete: {step: ask-customer, by: lena, output: {requestNumber: "Z-2"}}
+  - advance: until:await-answer
+  - expect: {data: {clarification.answered: false}, stages: {analysis: completed, pricing: open}}
+  - advance: PT2M
+  - expect: {events: [process.recall_timed_out], data: {priceHistory: []}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 1800000, rationale: расчёт}}
+  - approve: {step: approve-price, by: bob, decision: approve}
+  - complete: {step: prepare-documents, by: alice, output: {documents: [предложение], declarationsConfirmed: true}}
+  - complete: {step: submit, by: bob, output: {signedWithOwnSignature: true, applicationNumber: "400000001",
+                                               submittedAt: "2026-10-16T12:00:00+03:00"}}
+  - advance: P5D
+  - emit:
+      observation: procurement.protocol
+      source: eis
+      payload:
+        kind: procurement.protocol
+        data:
+          kind: protocol
+          purchaseNumber: "0000000000026000021"
+          details:
+            protocolKind: results
+            protocolDate: "2026-10-21T00:00:00+03:00"
+            applications: [{number: "400000001", price: "1800000.00", rating: 1}]
+            winner: {applicationNumber: "400000001", price: "1800000.00"}
+  - complete: {step: review-draft, by: lena, output: {disagreements: true, points: срок оплаты 30 дней вместо 7}}
+  - expect: {tasks: [{step: disagreements, assignee: alice, due: "2026-10-30T00:00:00+03:00"}]}
+  - complete: {step: disagreements, by: alice, output: {placed: true}}
+  # срок подписания — 2 + 5 рабочих дней от протокола и ещё 3 на разногласия (4 ноября — праздник)
+  - expect: {tasks: [{step: sign-contract, assignee: gd, due: "2026-11-05T00:00:00+03:00"}]}
+  - advance: until:sign-contract
+  - expect: {events: [process.escalated]}
+  - complete: {step: sign-contract, by: gd, output: {signedWithOwnSignature: true, signedAt: "2026-11-05T15:00:00+03:00"}}
+  - advance: until:await-contract
+  - expect:
+      status: completed
+      outcome: contract-signed
+      data: {contract.confirmed: false, contract.disagreementsPlaced: true}
+      memory: {remembered: [{facts: {contractConfirmed: false}}]}

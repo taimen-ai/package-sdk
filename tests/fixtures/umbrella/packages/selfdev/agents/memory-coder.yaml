@@ -1,0 +1,105 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Кодовый исполнитель memory-service (ветка master).
+# Агент описанием (TAI-ADR-0052): личность, работа, исполнитель, рабочая копия и
+# размещение; запускает платформа на узле fleet.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: memory-coder
+spec:
+  displayName: Memory coder (memory-service)
+  identity:
+    kind: agent
+    permissions:
+    - approvals.manage
+    - approvals.read
+    - artifacts.read
+    - artifacts.write
+    - claims.manage
+    - events.read
+    - goals.read
+    - goals.write
+    - observations.write
+    - projects.read
+    - rules.read
+    - sessions.open
+    - task_types.read
+    - tasks.claim
+    - tasks.read
+    - tasks.write
+    - workspaces.read
+  work:
+    workspace: ${SELFDEV_WORKSPACE_ID}
+    onlyAssigned: true
+  executor:
+    kind: claude-code
+    params:
+      model: claude-opus-5-5
+      permissionMode: bypassPermissions
+      timeoutSeconds: 10800
+    instructions: |
+      # Соглашения для агента-исполнителя memory-service
+
+      Этот текст добавляется к каждому prompt исполнителя (`CONTROL_PLANE_CLAUDE_PROMPT_FILE`).
+      Правится без перезапуска контейнера. Правила репозитория — в его `CLAUDE.md`: прочитай
+      его первым.
+
+      ## Среда
+
+      - Рабочая копия — текущий каталог (`memory-service`, базовая ветка **`master`**). Соседи
+        `../platform-auth-sdk` и `../control-plane` стоят на ревизиях, закреплённых
+        суперпроектом, и доступны **только для чтения**. Правки вне memory-service не
+        делай: сделай свою часть, а остальное опиши в отчёте.
+      - Главный клиент памяти — Control Plane (`../control-plane/src/control_plane/infrastructure/context_provider/`).
+        Меняя контракт HTTP API, проверь, как его вызывает ядро, и не ломай его молча.
+      - Тестовая PostgreSQL с Apache AGE и pgvector уже запущена рядом. Адрес — в
+        `CB_TEST_DATABASE_URL`, поэтому `tests/integration` не скипаются. Docker внутри нет.
+      - Полный прогон: `uv run ruff check . && uv run ruff format --check . &&
+        uv run --extra mcp pytest -q tests`. Интеграционные тесты входят в `tests`, если задан
+        `CB_TEST_DATABASE_URL`, и обязательны при изменениях модели, графа, фактов и миграций.
+      - Тестовая база одна на весь раннер: **одновременно — только один прогон тестов**, и
+        не в фоне. Два прогона в одну базу блокируют друг друга и висят без вывода
+        (2026-09-25: два полных набора простояли 11 минут). Пока идёт прогон, второй не
+        запускай; если прогон молчит дольше нескольких минут — останови его и разберись,
+        а не запускай новый.
+
+      ## Правила
+
+      - Архитектурные решения — в ADR ряда MEM: `docs/decisions/ADR-NNN-*.md`, номер —
+        следующий свободный на `origin/master` на момент коммита. Меняешь контракт API, схему
+        или поведение из ADR — обнови или дополни ADR в том же коммите.
+      - Сервис product-neutral. Доменные виды сущностей, связи и шаблоны идентификаторов
+        приходят данными (доменные пакеты, TAI-ADR-0042), а не кодом. Не зашивай в код ни
+        один домен, в том числе «код платформы».
+      - Документация — на русском, имена API и сущностей — на английском; комментарии в коде —
+        как в окружающем коде.
+      - Не коммить секреты, локальные абсолютные пути, `.env`, артефакты сборки.
+      - Не трогай `master` и чужие ветки: демон сам коммитит и публикует ветку задачи.
+      - Не делай того, чего нет в задаче. Найденное попутно — в отчёт, а не в код.
+
+      ## Отчёт
+
+      Первой строкой — что сделано, одной фразой. Дальше: изменённые места, какие тесты
+      прогнаны и с каким результатом, что осталось или требует решения человека. Ревью
+      делает человек через approval, поэтому отчёт должен позволять проверить работу без
+      повторного исследования.
+  workingCopy:
+    repository: https://git.example.com/acme/taimen-memory-service.git
+    directory: memory-service
+    baseRef: master
+    neighbours:
+      platform-auth-sdk: https://git.example.com/acme/taimen-platform-auth-sdk.git
+      control-plane: https://git.example.com/acme/taimen-control-plane.git
+    superproject: https://git.example.com/acme/umbrella.git
+    publish: true
+  placement:
+    requires:
+    - claude-subscription
+    - repos
+    secrets:
+    - claude-oauth-token
+    - github-token
+    resources:
+      cpus: 2
+      memoryMb: 4096
+    drainSeconds: 14400
+  state: running

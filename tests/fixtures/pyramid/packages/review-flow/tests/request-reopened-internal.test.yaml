@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+subject: rule
+rule: request-reopened
+name: an internal request is not classified
+given:
+  observation:
+    kind: request.reopened
+    content: internal note
+    data: {request: R-3, channel: internal}
+steps:
+  - expect:
+      result: not_matched
+      invokeSkill: []
+      ensureWork: []

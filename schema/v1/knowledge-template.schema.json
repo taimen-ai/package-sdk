@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taimen.ai/schema/packages/v1/knowledge-template.schema.json",
+  "title": "Уточнение шаблона загрузки вида",
+  "description": "Необязательные данные пакета templates/<вид>.yaml. Шаблон строится генератором из JSON Schema вида; уточнение меняет только подачу: заголовки, порядок, подсказки, примеры и дополнительные запрещённые колонки. Колонок, которых нет в схеме вида, уточнение не добавляет.", "$comment": "TAI-ADR-0056 Р2",
+  "type": "object",
+  "required": ["pack", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "pack": {"type": "string", "pattern": "^(tenant:)?[a-z0-9][a-z0-9._-]{0,63}@[^@\\s]+$", "description": "Пакет онтологии и версия вида, например company@1"},
+    "kind": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "title": {"type": "string", "maxLength": 200, "description": "Название листа и файла шаблона"},
+    "instructions": {"type": "string", "maxLength": 4000, "description": "Текст листа «Инструкция» перед сгенерированным описанием колонок"},
+    "columns": {
+      "type": "array", "maxItems": 100,
+      "description": "Порядок колонок; не перечисленные идут после в порядке схемы",
+      "items": {
+        "type": "object",
+        "required": ["field"],
+        "additionalProperties": false,
+        "properties": {
+          "field": {
+            "type": "string",
+            "pattern": "^(key|title|attributes(\\.[A-Za-z_][A-Za-z0-9_]*)+|links\\.[a-z][a-z0-9_]*)$",
+            "description": "key — естественный ключ, title — имя, attributes.<путь> — атрибут, links.<связь> — ключи связанных сущностей"
+          },
+          "header": {"type": "string", "minLength": 1, "maxLength": 100},
+          "hint": {"type": "string", "maxLength": 500},
+          "example": {"type": ["string", "number", "boolean"]},
+          "separator": {"type": "string", "maxLength": 3, "description": "Разделитель списка в ячейке (коды, ключи связей); по умолчанию «;»"}
+        }
+      }
+    },
+    "examples": {
+      "type": "array", "maxItems": 5,
+      "description": "Строки-примеры листа шаблона: field → значение",
+      "items": {"type": "object"}
+    },
+    "forbiddenColumns": {
+      "type": "array", "maxItems": 50,
+      "items": {"type": "string", "minLength": 2, "maxLength": 100},
+      "description": "Запрещённые заголовки сверх общего списка персональных данных (фио, фамилия, паспорт, снилс, дата рождения, адрес, телефон, e-mail)"
+    }
+  }
+}

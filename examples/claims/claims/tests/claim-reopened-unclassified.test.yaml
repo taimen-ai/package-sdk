@@ -1,0 +1,16 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: rule
+rule: claim-reopened
+name: a reopened ticket that the model cannot classify files no follow-up
+given:
+  observation:
+    kind: helpdesk.ticket_reopened
+    data: {ticketId: T-1001, version: 3, channel: web, subject: Again, text: Still broken.}
+mocks:
+  skills:
+    claims.classify@1:
+      - error: {type: llm_unavailable, detail: no model configured}
+steps:
+  - expect:
+      result: failed
+      ensureWork: []

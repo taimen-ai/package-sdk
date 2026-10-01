@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# «Проверить счёт»: задача шага check-invoice процесса invoice-payment. Исполнитель
+# сверяет счёт с договором, сдаёт заключение PDF и итог в форме шага (ok / mismatch).
+# Обязательный выход — критерий стадии проверки (CP-ADR-0072): без заключения
+# задача не закрывается. Оплата, которая зависит от проверки (depends_on),
+# получает заключение входом, а финансовый директор видит его в задаче.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: invoice-review
+spec:
+  displayName: Проверить счёт
+  description: Проверка счёта поставщика перед оплатой; результат — заключение PDF
+  instructions: |-
+    Сверь счёт с договором и условиями поставки: реквизиты, сумма, предмет. Итог
+    оформи заключением в PDF и сдай выходом `review` (`cp_create_artifact` с
+    `file`, тип `invoice-review`, `metadata.invoice` — номер счёта).
+  lifecycleSchema:
+    statuses:
+      - {key: to_check, category: active, displayName: К проверке}
+      - {key: checking, category: active, displayName: Проверяется}
+      - {key: checked, category: terminal_success, displayName: Проверено}
+      - {key: dropped, category: terminal_cancelled, displayName: Не нужна}
+    transitions:
+      - {from: to_check, to: [checking, checked, dropped]}
+      - {from: checking, to: [to_check, checked, dropped]}
+    initialStatus: to_check
+    claimStatus: checking
+    releaseStatus: to_check
+    completionStatus: checked
+  artifactSchema:
+    outputs:
+      - {key: review, type: invoice-review, required: true}

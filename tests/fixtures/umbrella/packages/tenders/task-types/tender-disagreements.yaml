@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг disagreements (стадия contract). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-disagreements
+spec:
+  displayName: Разместить протокол разногласий
+  description: >-
+    Протокол разногласий размещается на площадке человеком с электронной подписью.
+  fieldSchema:
+    type: object
+    required: [placed]
+    properties:
+      placed: {type: boolean}
+      placedAt: {type: string, format: date-time}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Разместите протокол разногласий на площадке своей электронной подписью (пункты — во входе задачи). Платформа протокол не размещает.

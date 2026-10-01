@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Пакет-фикстура сроков процесса: срок процесса и шага в рабочих единицах календаря с
+# рабочими часами и сценарий, который читает состояние срока (expect.sla).
+apiVersion: taimen.ai/v1
+kind: Package
+key: sla-demo
+spec:
+  version: 0.1.0
+  displayName: SLA demo (test fixture)
+  requires: []

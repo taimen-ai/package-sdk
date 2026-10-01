@@ -1,0 +1,6 @@
+apiVersion: taimen.ai/v1
+kind: Installation
+key: acme
+spec:
+  packages:
+    - {key: helpdesk-crm, git: https://git.example.com/acme/helpdesk-crm.git}

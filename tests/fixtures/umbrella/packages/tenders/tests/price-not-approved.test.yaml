@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Крупная закупка (НМЦК 400 млн — строка аукциона свыше 300 млн: извещение за 15 дней):
+# согласуют финансы и генеральный директор, оба (кворум all). Каждый отказ возвращает
+# расчёт; после третьего отказа дело закрывается с исходом price-not-approved.
+process: tender
+name: крупная закупка — два согласующих, три отказа
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000013"
+          purchase:
+            number: "0000000000026000013"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: Министерство цифрового развития (тест), inn: "7700000005"}
+            object: Создание государственной информационной системы
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "400000000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-26T09:00:00+03:00"}
+  - expect: {data: {legal.notice: 15}}
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: стратегическая}}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: false}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 380000000, rationale: v1}}
+  - expect: {data: {approval.level: director, approval.primary: tender-finance, approval.secondary: general-director}}
+  # финансы согласны, директор — нет: при кворуме all отказ одного решает сразу
+  - approve: {step: approve-price, by: fin, decision: approve}
+  - expect: {status: running, data: {approval.level: director}}
+  - approve: {step: approve-price, by: gd, decision: reject}
+  - complete: {step: calculate-price, by: alice, output: {amount: 370000000, rationale: v2}}
+  - approve: {step: approve-price, by: fin, decision: reject}
+  - complete: {step: calculate-price, by: bob, output: {amount: 360000000, rationale: v3}}
+  - approve: {step: approve-price, by: gd, decision: reject}
+  - expect:
+      status: completed
+      outcome: price-not-approved
+      data: {priceApproval.outcome: rejected, priceApproval.rejectedBy: [gd]}

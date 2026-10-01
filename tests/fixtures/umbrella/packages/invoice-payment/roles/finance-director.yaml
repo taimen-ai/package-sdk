@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Согласует оплату от порога и выше (таблица approval-route процесса invoice-payment),
+# получает эскалацию просроченного согласования и владеет процессом (owner).
+apiVersion: taimen.ai/v1
+kind: Role
+key: finance-director
+spec:
+  name: Финансовый директор
+  description: Согласует оплату счетов поставщиков

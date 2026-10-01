@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taimen.ai/schema/packages/v1/plan.schema.json",
+  "title": "План установки пакетов", "$comment": "TAI-ADR-0062 п.7",
+  "description": "Один документ изменений всех видов установки. Пишет package-sdk plan --out; применяется только package-sdk apply --plan без правок: planHash — хэш документа без самого поля, правленый файл отвергается. Значения переменных в план не пишутся, только их хэш.",
+  "type": "object",
+  "required": ["format", "server", "createdAt", "sections", "planHash"],
+  "additionalProperties": false,
+  "properties": {
+    "format": {"const": "package-sdk.plan/v1"},
+    "server": {"type": "string", "pattern": "^(https://[^\\s/@]+(/\\S*)?|http://(localhost|127\\.0\\.0\\.1|\\[::1\\])(:[0-9]+)?(/\\S*)?)$", "description": "Стенд: https, http — только localhost"},
+    "engines": {"type": "object", "additionalProperties": {"type": "string"}, "description": "Версии компонентов стенда на момент плана (из openapi.json)"},
+    "createdAt": {"type": "string", "format": "date-time"},
+    "installation": {"type": "string", "description": "Ключ установки (Installation.key)"},
+    "install": {"type": "string", "minLength": 1, "description": "Файл установки относительно файла плана: apply --plan собирает по нему пакеты заново и сверяет lockHash и variablesHash"},
+    "lockHash": {"$ref": "#/$defs/hash"},
+    "variablesHash": {"$ref": "#/$defs/hash"},
+    "overwriteConsole": {"type": "boolean", "description": "plan --overwrite-console: перезаписать поля объектов ядра, которые человек правил в консоли после прошлого применения; без флага ядро их сохраняет. package-sdk plan пишет поле всегда, false по умолчанию; план прежнего формата без поля применяется как false. Входит в planHash; с ним же строится и применяется план ядра"},
+    "sections": {"type": "array", "items": {"$ref": "#/$defs/section"}},
+    "planHash": {"$ref": "#/$defs/hash"}
+  },
+  "$defs": {
+    "hash": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "change": {
+      "type": "object",
+      "required": ["kind", "key", "operation"],
+      "properties": {
+        "package": {"type": "string"},
+        "kind": {"type": "string"},
+        "key": {"type": "string"},
+        "operation": {"enum": ["create", "version", "patch", "deprecate", "enable", "disable", "register", "retire", "unchanged"]},
+        "fields": {"type": "array", "items": {"type": "string"}, "description": "Поля, которые меняются"},
+        "expected": {"description": "Что установщик ожидает увидеть на стенде перед записью (для plan_stale)"}
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["kind"],
+      "oneOf": [
+        {
+          "properties": {"kind": {"const": "catalog"}, "changes": {"type": "array", "items": {"$ref": "#/$defs/change"}}},
+          "required": ["kind", "changes"]
+        },
+        {
+          "properties": {
+            "kind": {"const": "core"},
+            "package": {"type": "string"},
+            "planHash": {"$ref": "#/$defs/hash"},
+            "plan": {"type": "object", "description": "Ответ /packages:plan ядра как есть"},
+            "workspaceId": {"type": "string", "description": "workspaceId запроса плана — с ним же идёт /packages:apply"},
+            "replayLimit": {"type": "integer", "minimum": 0, "description": "replayLimit запроса плана — с ним план ядра строится заново перед применением"}
+          },
+          "required": ["kind", "package", "planHash", "plan"]
+        },
+        {
+          "properties": {"kind": {"const": "notification-rules"}, "changes": {"type": "array", "items": {"$ref": "#/$defs/change"}}},
+          "required": ["kind", "changes"]
+        },
+        {
+          "properties": {
+            "kind": {"const": "knowledge"},
+            "register": {"type": "array", "items": {"$ref": "#/$defs/change"}},
+            "enable": {
+              "type": "array",
+              "items": {
+                "type": "object", "required": ["workspace", "packs"],
+                "properties": {
+                  "workspace": {"type": "string"},
+                  "packs": {"type": "array", "items": {"type": "string"}},
+                  "current": {"type": "array", "items": {"type": "string"}}
+                }
+              }
+            }
+          },
+          "required": ["kind"]
+        },
+        {
+          "properties": {"kind": {"const": "retire"}, "items": {"type": "array", "items": {"$ref": "#/$defs/change"}}},
+          "required": ["kind", "items"]
+        }
+      ]
+    }
+  }
+}

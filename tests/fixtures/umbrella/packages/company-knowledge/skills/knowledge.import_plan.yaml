@@ -1,0 +1,204 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: knowledge.import_plan
+spec:
+  version: '1'
+  description: Проверить таблицу по шаблону вида и построить план загрузки без записи
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        fileArtifactId:
+          description: Артефакт knowledge-file с таблицей
+          minLength: 1
+          title: Fileartifactid
+          type: string
+        workspaceId:
+          description: Workspace базы знаний
+          minLength: 1
+          title: Workspaceid
+          type: string
+        pack:
+          description: 'Пакет вида: company@1, procurement@2, tenant:<имя>@<версия>'
+          title: Pack
+          type: string
+        kind:
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          title: Kind
+          type: string
+        profile:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Profile
+        source:
+          anyOf:
+          - pattern: ^[a-z0-9][a-z0-9:_-]{0,120}$
+            type: string
+          - type: 'null'
+          default: null
+          description: Источник, владеющий элементами; по умолчанию template:<вид>
+          title: Source
+        packs:
+          description: Другие включённые пакеты
+          items:
+            type: string
+          title: Packs
+          type: array
+        definitions:
+          items:
+            additionalProperties: true
+            type: object
+          title: Definitions
+          type: array
+        filename:
+          default: ''
+          title: Filename
+          type: string
+      required:
+      - fileArtifactId
+      - workspaceId
+      - pack
+      - kind
+      title: ImportIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        Counts:
+          properties:
+            opened:
+              default: 0
+              title: Opened
+              type: integer
+            changed:
+              default: 0
+              title: Changed
+              type: integer
+            closed:
+              default: 0
+              title: Closed
+              type: integer
+            unchanged:
+              default: 0
+              title: Unchanged
+              type: integer
+          title: Counts
+          type: object
+        KeyRef:
+          properties:
+            kind:
+              title: Kind
+              type: string
+            key:
+              title: Key
+              type: string
+          required:
+          - kind
+          - key
+          title: KeyRef
+          type: object
+        RowErrorOut:
+          properties:
+            row:
+              title: Row
+              type: integer
+            code:
+              title: Code
+              type: string
+            message:
+              title: Message
+              type: string
+            column:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Column
+          required:
+          - row
+          - code
+          - message
+          title: RowErrorOut
+          type: object
+      properties:
+        status:
+          enum:
+          - ok
+          - invalid
+          - empty
+          title: Status
+          type: string
+        templateVersion:
+          title: Templateversion
+          type: string
+        source:
+          title: Source
+          type: string
+        rows:
+          title: Rows
+          type: integer
+        counts:
+          $ref: '#/$defs/Counts'
+        stateToken:
+          anyOf:
+          - type: string
+          - type: 'null'
+          default: null
+          title: Statetoken
+        opened:
+          items:
+            $ref: '#/$defs/KeyRef'
+          title: Opened
+          type: array
+        changed:
+          items:
+            $ref: '#/$defs/KeyRef'
+          title: Changed
+          type: array
+        closed:
+          items:
+            $ref: '#/$defs/KeyRef'
+          title: Closed
+          type: array
+        truncated:
+          default: false
+          title: Truncated
+          type: boolean
+        conflicts:
+          items:
+            additionalProperties: true
+            type: object
+          title: Conflicts
+          type: array
+        rowErrors:
+          items:
+            $ref: '#/$defs/RowErrorOut'
+          title: Rowerrors
+          type: array
+        summary:
+          description: Сводка плана для человека (markdown)
+          title: Summary
+          type: string
+      required:
+      - status
+      - templateVersion
+      - source
+      - rows
+      - counts
+      - summary
+      title: PlanOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_company_knowledge.import_skills:import_plan

@@ -1,0 +1,152 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: tasks.check
+spec:
+  version: '1'
+  description: Проверить форму документа задач фичи и развернуть его в задачи с зависимостями
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - slug
+      - repositories
+      anyOf:
+      - required:
+        - repository
+      - required:
+        - document
+      additionalProperties: false
+      properties:
+        slug:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+        repository:
+          type: string
+          minLength: 1
+        ref:
+          type: string
+          minLength: 1
+        document:
+          type: string
+          minLength: 1
+          maxLength: 200000
+        spec:
+          type: string
+          minLength: 1
+          maxLength: 200000
+        humanAssignee:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Исполнитель пунктов «человек» и сходимостей (обычно исполнитель шага разбиения)
+        repositories:
+          type: object
+          minProperties: 1
+          maxProperties: 30
+          additionalProperties:
+            type: object
+            required:
+            - url
+            - branch
+            additionalProperties: false
+            properties:
+              url:
+                type: string
+                minLength: 1
+                maxLength: 500
+              branch:
+                type: string
+                minLength: 1
+                maxLength: 200
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - status
+      - gaps
+      - text
+      - items
+      - stats
+      properties:
+        ref:
+          type: string
+        status:
+          enum:
+          - ok
+          - gaps
+        gaps:
+          type: array
+          items:
+            type: object
+            required:
+            - kind
+            - line
+            - detail
+            properties:
+              kind:
+                type: string
+              line:
+                type: integer
+              detail:
+                type: string
+        text:
+          type: string
+        items:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - id
+            - type
+            - title
+            - description
+            - repository
+            - assignee
+            - dedupKey
+            - dependsOn
+            - customFields
+            properties:
+              id:
+                type: string
+              type:
+                enum:
+                - coding-task
+                - feature-converge
+              title:
+                type: string
+              description:
+                type: string
+              repository:
+                type: string
+              assignee:
+                type:
+                - string
+                - 'null'
+              parallel:
+                type: boolean
+              dedupKey:
+                type: string
+              dependsOn:
+                type: array
+                items:
+                  type: string
+              customFields:
+                type: object
+        stats:
+          type: object
+          additionalProperties:
+            type: integer
+    idempotency: natural
+    timeoutSeconds: 300
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 30
+    implementation:
+      protocol: local
+      entrypoint: taimen_selfdev.tasks_check:invoke

@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Пара к oss-sync по расписанию (TAI-ADR-0043, амендмент о релизах): тег релиза
+# обычно ставят в репозитории компонента уже после того, как указатель сабмодуля
+# закреплён, и коммита суперпроекта, который разбудил бы oss-sync, может не быть.
+# git-connector тегов не наблюдает (только коммиты веток), поэтому раз в час
+# oss.check@2 сверяет голову ветки суперпроекта по умолчанию. Действие и dedup-ключ —
+# те же, что у oss-sync: два правила на один релиз заводят одну работу. Кэш проверки
+# по состоянию делает холостой прогон дешёвым.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: oss-release-sync
+spec:
+  description: Раз в час — релизы компонентов, поставленные после закрепления, в открытую поставку
+  workspaceId: ${SELFDEV_WORKSPACE_ID}
+  identity: {agent: selfdev-rules}
+  trigger: {kind: schedule, type: interval, everySeconds: 3600}
+  interpretation:
+    skill: oss.check@2
+    inputs:
+      superproject: ${SELFDEV_SUPERPROJECT_URL}
+  action:
+    kind: ensure_work
+    taskType: oss-publish
+    forEach: skill.output.ready
+    dedupKeyTemplate: "oss-publish:{{item.component}}:{{item.sha}}"
+    fields:
+      title: "Опубликовать {{item.component}} {{item.release}}"
+      priority: medium
+      assignee: ${SELFDEV_SKILLS_EXECUTOR}
+      description: |
+        Суперпроект {{skill.output.ref}} закрепил {{item.component}} на {{item.pinned}};
+        его релиз {{item.release}} ({{item.sha}}) по oss.check@2 публикуем. Снимок дерева
+        релиза уходит в main зеркала {{item.mirror}} с тегом {{item.release}}, сабмодуль в
+        umbrella сдвигается на снимок (скилл oss.publish@2).
+      customFields:
+        component: "{{item.component}}"
+        sha: "{{item.sha}}"
+        release: "{{item.release}}"
+        pinned: "{{item.pinned}}"
+        repository: "{{item.repository}}"
+        mirror: "{{item.mirror}}"
+        umbrella: "{{item.umbrella}}"
+        umbrellaBranch: "{{item.umbrellaBranch}}"
+        superproject: "{{item.superproject}}"
+        superprojectRef: "{{skill.output.ref}}"

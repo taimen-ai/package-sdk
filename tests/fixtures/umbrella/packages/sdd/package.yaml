@@ -1,0 +1,63 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Цикл spec-driven разработки (TAI-ADR-0047): шаги цикла — типы задач, ворота —
+# approval с исходами, проверки формы — скиллы пакета selfdev (spec.check,
+# plan.constitution_check, feature.design_check). Инструкции шагов — поле
+# `instructions` версии типа (CP-ADR-0066): исполнитель получает их слоем после
+# контракта платформы и проекта. Документы цикла — артефакты (CP-ADR-0072): дизайн
+# сдаёт spec и plan, разбиение получает их входами и сдаёт tasks, сходимость
+# получает spec и tasks (0.5.0). Документ задач проверяет критерий типа
+# feature-tasks (tasks.check@1), задачи по нему заводит правило feature-expand от
+# имени агента sdd-rules (TAI-ADR-0053, 0.6.0). В карте репозиториев —
+# human-harness (0.9.0, фича runtime-console, TAI-ADR-0058) и
+# package-sdk (0.10.0) и fleet (0.10.1) — фича package-sdk, TAI-ADR-0062.
+apiVersion: taimen.ai/v1
+kind: Package
+key: sdd
+spec:
+  version: 0.10.1
+  displayName: Spec-driven development
+  description: >-
+    Дизайн фичи (spec + plan) с одними воротами после plan, разбиение на задачи
+    (документ по форме, задачи заводит правило feature-expand) и сходимость кода
+    со spec — как данные тенанта, без кода ядра.
+  requires: [selfdev]
+  variables:
+    SELFDEV_CONTROL_PLANE_URL:
+      kind: url
+      description: Адрес git репозитория control-plane в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-control-plane.git
+    SELFDEV_FLEET_URL:
+      kind: url
+      description: Адрес git репозитория fleet в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-fleet.git
+    SELFDEV_HUMAN_HARNESS_URL:
+      kind: url
+      description: Адрес git репозитория human-harness в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-human-harness.git
+    SELFDEV_IAM_SERVICE_URL:
+      kind: url
+      description: Адрес git репозитория iam-service в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-iam-service.git
+    SELFDEV_MEMORY_SERVICE_URL:
+      kind: url
+      description: Адрес git репозитория memory-service в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-memory-service.git
+    SELFDEV_NOTIFICATION_SERVICE_URL:
+      kind: url
+      description: Адрес git репозитория notification-service в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-notification-service.git
+    SELFDEV_PACKAGE_SDK_URL:
+      kind: url
+      description: Адрес git репозитория package-sdk в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-package-sdk.git
+    SELFDEV_SKILL_SDK_URL:
+      kind: url
+      description: Адрес git репозитория skill-sdk в карте репозиториев документа задач (tasks.check@1)
+      example: https://github.com/<org>/taimen-skill-sdk.git
+    SELFDEV_SUPERPROJECT_URL:
+      kind: url
+      description: Адрес git суперпроекта — клон для скиллов правил и наблюдений git-connector
+      example: https://github.com/<org>/project-taimen-ai.git
+    SELFDEV_WORKSPACE_ID:
+      kind: workspace
+      description: Workspace проекта саморазработки — сюда правила заводят работу, в нём работают агенты пакета

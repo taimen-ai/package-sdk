@@ -1,0 +1,11 @@
+# Машиночитаемые соглашения репозитория для исполнителя; проза — AGENTS.md.
+# Формат — runner_config.md в control-plane (src/control_plane_agent/).
+version: 1
+# path-зависимости экстр: control-plane (sandbox, connector), skill-sdk (skills);
+# platform-auth-sdk — зависимость control-plane по тому же соседству
+neighbours: [control-plane, skill-sdk, platform-auth-sdk]
+setup: make install
+checks:
+  - {name: lint, run: make lint}
+  - {name: types, run: make typecheck}
+  - {name: tests, run: make test}

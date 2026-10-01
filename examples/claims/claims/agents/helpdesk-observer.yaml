@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The helpdesk observer: polls the helpdesk and writes new and reopened tickets into the
+# core as observations of the claims workspace. Its image is built from the integration
+# code by `package-sdk image observer` (see Dockerfile). The token of the helpdesk is a
+# secret of the node, never a value of the package.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: helpdesk-observer
+spec:
+  displayName: Helpdesk observer
+  description: New and reopened helpdesk tickets as observations
+  identity:
+    kind: agent
+    permissions: [observations.write]
+  work:
+    workspace: ${CLAIMS_WORKSPACE_ID}
+  executor:
+    kind: observer
+    image: registry.example.com/claims/helpdesk-observer:0.1.0
+    params:
+      entrypoint: claims_helpdesk.observer:observe
+      intervalSeconds: 60
+      config:
+        baseUrl: ${HELPDESK_URL}
+        pageSize: 50
+  placement:
+    requires: [helpdesk-access]
+    secrets: [helpdesk-token]
+    resources: {cpus: 1, memoryMb: 256}
+  state: running

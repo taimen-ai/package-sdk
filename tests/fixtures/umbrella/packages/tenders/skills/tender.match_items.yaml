@@ -1,0 +1,210 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: tender.match_items
+spec:
+  version: '1'
+  description: 'Сопоставить позиции закупки с предложениями компании: КТРУ, префикс ОКПД2, единица; смысловой
+    кандидат и неизменяемые характеристики — через ИИ; кто исполняет'
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      properties:
+        items:
+          items:
+            additionalProperties: true
+            type: object
+          maxItems: 2000
+          title: Items
+          type: array
+        company:
+          additionalProperties: true
+          description: Ответ recall о компании
+          title: Company
+          type: object
+        roles:
+          additionalProperties: true
+          description: Ответ recall о подразделениях, ролях и профилях
+          title: Roles
+          type: object
+        offerings:
+          additionalProperties: true
+          description: Ответ recall о предложениях (смысловой добор)
+          title: Offerings
+          type: object
+        requireAi:
+          default: false
+          title: Requireai
+          type: boolean
+      title: MatchIn
+      type: object
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      $defs:
+        CharacteristicCheck:
+          properties:
+            name:
+              title: Name
+              type: string
+            status:
+              enum:
+              - met
+              - not_met
+              - unknown
+              title: Status
+              type: string
+            note:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Note
+          required:
+          - name
+          - status
+          title: CharacteristicCheck
+          type: object
+        Coverage:
+          properties:
+            count:
+              title: Count
+              type: integer
+            total:
+              title: Total
+              type: integer
+            sumShare:
+              title: Sumshare
+              type: string
+          required:
+          - count
+          - total
+          - sumShare
+          title: Coverage
+          type: object
+        Executor:
+          properties:
+            role:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Role
+            capability:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Capability
+            unit:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Unit
+          title: Executor
+          type: object
+        ItemMatch:
+          properties:
+            position:
+              title: Position
+              type: integer
+            name:
+              title: Name
+              type: string
+            status:
+              enum:
+              - met
+              - not_met
+              - unknown
+              title: Status
+              type: string
+            method:
+              enum:
+              - ktru
+              - okpd2
+              - semantic
+              - none
+              title: Method
+              type: string
+            level:
+              default: 0
+              title: Level
+              type: integer
+            offeringKey:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Offeringkey
+            offeringTitle:
+              anyOf:
+              - type: string
+              - type: 'null'
+              default: null
+              title: Offeringtitle
+            inferred:
+              default: false
+              title: Inferred
+              type: boolean
+            unitMismatch:
+              default: false
+              title: Unitmismatch
+              type: boolean
+            characteristics:
+              items:
+                $ref: '#/$defs/CharacteristicCheck'
+              title: Characteristics
+              type: array
+            source:
+              additionalProperties: true
+              title: Source
+              type: object
+          required:
+          - position
+          - name
+          - status
+          - method
+          title: ItemMatch
+          type: object
+      properties:
+        status:
+          enum:
+          - ok
+          - partial
+          title: Status
+          type: string
+        items:
+          items:
+            $ref: '#/$defs/ItemMatch'
+          title: Items
+          type: array
+        coverage:
+          $ref: '#/$defs/Coverage'
+        executor:
+          $ref: '#/$defs/Executor'
+        aiPending:
+          default: false
+          title: Aipending
+          type: boolean
+        summary:
+          title: Summary
+          type: string
+      required:
+      - status
+      - items
+      - coverage
+      - executor
+      - summary
+      title: MatchOut
+      type: object
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 1
+      backoffSeconds: 0
+    implementation:
+      protocol: local
+      entrypoint: taimen_tenders.match_items:invoke

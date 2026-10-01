@@ -1,0 +1,18 @@
+{
+  "format": "package-sdk.plan/v1",
+  "server": "https://platform.example.com",
+  "engines": {"control-plane": "0.10.2"},
+  "createdAt": "2026-09-29T12:00:00Z",
+  "installation": "acme-prod",
+  "install": "packages.yaml",
+  "lockHash": "sha256:0000000000000000000000000000000000000000000000000000000000000001",
+  "variablesHash": "sha256:0000000000000000000000000000000000000000000000000000000000000002",
+  "sections": [
+    {"kind": "catalog", "changes": [{"package": "acme-claims", "kind": "Role", "key": "claims-lead", "operation": "create"}]},
+    {"kind": "core", "package": "acme-claims", "planHash": "sha256:0000000000000000000000000000000000000000000000000000000000000003", "plan": {"changes": []}},
+    {"kind": "knowledge", "register": [{"kind": "KnowledgePack", "key": "claims", "operation": "register"}], "enable": [{"workspace": "11111111-1111-1111-1111-111111111111", "packs": ["company@1", "claims@1"], "current": ["company@1"]}]},
+    {"kind": "notification-rules", "changes": []},
+    {"kind": "retire", "items": [{"kind": "Process", "key": "claim-v0", "operation": "retire"}]}
+  ],
+  "planHash": "sha256:0000000000000000000000000000000000000000000000000000000000000004"
+}

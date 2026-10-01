@@ -1,0 +1,14 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Документ цикла spec-driven разработки (TAI-ADR-0047) как артефакт задачи
+# (CP-ADR-0072): его сдаёт шаг цикла, следующий шаг получает входом.
+apiVersion: taimen.ai/v1
+kind: ArtifactType
+key: spec-document
+spec:
+  displayName: Spec
+  description: "«Что и зачем» фичи: сценарии, требования FR, критерии SC"
+  mediaTypes: [text/markdown]
+  metadataSchema:
+    type: object
+    properties:
+      featureSlug: {type: string, description: Фича}

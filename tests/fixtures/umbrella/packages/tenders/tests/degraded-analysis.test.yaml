@@ -1,0 +1,70 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Деградация анализа (FR-021): память о компании не ответила ни на один вопрос,
+# сопоставление позиций и проверка требований упали — анализ идёт дальше с пометкой
+# «недоступно»; разбор документации отдал детерминированную часть, а ИИ так и не
+# ответил за все повторы — рекомендация по детерминированной части, решает человек.
+process: tender
+name: деградация — память и скиллы недоступны, ИИ не ответил за все повторы
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-history, output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - error: {type: upstream_unavailable, status: 503, detail: исполнитель недоступен}
+    tender.check_requirements@1:
+      - error: {type: upstream_unavailable, status: 503, detail: исполнитель недоступен}
+    tender.analyze_docs@2:
+      - output:
+          status: partial
+          summary: ИИ недоступен
+          blockers: []
+          recommendation: {decision: needs_review, rationale: "Покрыто ? из ?"}
+          aiPending: true
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        source: eis
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000011"
+          law: 44-FZ
+          artifacts: [{id: art-1, fileName: Проект контракта.docx, content: true}]
+          purchase:
+            number: "0000000000026000011"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка модуля учёта
+            okpd2: ["62.01.12.000"]
+            maxPrice: {amount: "900000.00", currency: RUB}
+            deadlines: {published: "2026-10-01T09:00:00+03:00", submissionEnd: "2026-10-19T09:00:00+03:00"}
+            contractTerm: {end: "2027-03-31"}
+            items: [{position: 1, name: Разработка модуля, okpd2: {code: "62.01.12.000"}, sum: "900000.00"}]
+            requirements: [{code: TU1131}]
+  # память о компании не ответила — таймауты всех трёх вопросов
+  - advance: PT3M
+  # повторы ИИ-части разбора: 15, 30, 60 минут
+  - advance: PT3H
+  - expect:
+      stages: {screening: completed, decision: open}
+      data:
+        company: {}
+        offerings: {}
+        match.status: unavailable
+        checks.status: unavailable
+        executorRole: tender-lead
+        analysis.recommendation.decision: needs_review
+        analysisNote: "ИИ недоступен: рекомендация — по детерминированной части"
+      tasks: [{step: go-no-go, assignee: alice, status: open}]
+  - complete: {step: go-no-go, by: alice, output: {decision: no-go, reason: мало данных}}
+  - expect: {status: completed, outcome: declined}

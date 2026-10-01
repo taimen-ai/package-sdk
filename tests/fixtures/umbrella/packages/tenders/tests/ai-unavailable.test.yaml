@@ -1,0 +1,71 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# ИИ недоступен на сопоставлении позиций и за все повторы так и не ответил (FR-021):
+# детерминированная часть готова, неизменяемые характеристики — «неизвестно», в данных
+# пометка для человека; анализ документации и go/no-go идут дальше.
+process: tender
+name: ИИ-часть сопоставления не повторилась — пометка «нужен человек»
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-history, output: {nodes: []}}
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [{kind: offering, key: "offering:1c:SKU-1", title: Разработка ПО, attributes: {okpd2: ["62.01.11.000"]}}], edges: []}}
+  skills:
+    tender.match_items@1:
+      - output:
+          status: partial
+          items: [{position: 1, name: Разработка модуля, status: unknown, method: okpd2, level: 3, offeringKey: "offering:1c:SKU-1"}]
+          coverage: {count: 0, total: 1, sumShare: "0.0000"}
+          executor: {}
+          aiPending: true
+          summary: ИИ недоступен — характеристики позже
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+      - error: {type: upstream_unavailable, status: 503, detail: модель недоступна}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: Разработка ИС
+          blockers: []
+          recommendation: {decision: needs_review, rationale: "Покрыто 0 из 1"}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        source: eis
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000012"
+          law: 44-FZ
+          artifacts: [{id: art-1, fileName: Проект контракта.docx, content: true}]
+          purchase:
+            number: "0000000000026000012"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка модуля учёта
+            okpd2: ["62.01.12.000"]
+            maxPrice: {amount: "900000.00", currency: RUB}
+            deadlines: {published: "2026-10-01T09:00:00+03:00", submissionEnd: "2026-10-19T09:00:00+03:00"}
+            contractTerm: {end: "2027-03-31"}
+            items: [{position: 1, name: Разработка модуля, okpd2: {code: "62.01.12.000"}, sum: "900000.00"}]
+            requirements: [{code: TU1131}]
+  # повторы ИИ-части сопоставления: 15, 30, 60 минут
+  - advance: PT3H
+  - expect:
+      stages: {screening: completed, decision: open}
+      data:
+        match.aiPending: true
+        analysisNote: "ИИ недоступен: неизменяемые характеристики и документация — неизвестно, нужен человек"
+        analysis.recommendation.decision: needs_review
+      tasks: [{step: go-no-go, assignee: alice, status: open}]
+  - complete: {step: go-no-go, by: alice, output: {decision: no-go, reason: мало данных}}
+  - expect: {status: completed, outcome: declined}

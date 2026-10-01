@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: ArtifactType
+key: knowledge-import-plan
+spec:
+  displayName: План загрузки в базу знаний
+  description: >-
+    Выход knowledge.import_plan@1 (JSON): что откроется, изменится и закроется, конфликты
+    ключей, ошибки строк и stateToken — состояние, на котором план построен
+  metadataSchema:
+    type: object
+    required: [templateVersion, status]
+    properties:
+      templateVersion: {type: string, maxLength: 200}
+      status: {type: string, enum: [ok, invalid, empty]}
+      counts: {type: object}
+      fileArtifactId: {type: string, maxLength: 64}

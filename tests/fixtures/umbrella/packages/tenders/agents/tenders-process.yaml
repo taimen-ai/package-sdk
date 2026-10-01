@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность процесса tender (TAI-ADR-0054 FR-020, CP-ADR-0074 §14): от имени этого
+# principal'а экземпляры заводят задачи и согласования, вызывают скилл анализа
+# документации, пишут наблюдения в память (remember) и события process.*. Процесс
+# без личности не публикуется. Исполнителя нет — только личность (как
+# process-knowledge-rules).
+#
+# Права — ровно то, что исполняют намерения процесса:
+# - tasks.read, tasks.write — задачи шагов human и компенсаций;
+# - approvals.manage — согласование цены (approve-price), закрытие лишних approvals;
+# - skills.invoke — tender.analyze_docs@1 и process.retrospective@1;
+# - observations.write — remember (цены, победители, уроки) в namespace workspace;
+# - events.read — корреляция наблюдений procurement.* с экземпляром.
+# Связку заводит установка (IAM-principal по identity.iam и PUT /agents/{key}/identity).
+apiVersion: taimen.ai/v1
+kind: Agent
+key: tenders-process
+spec:
+  displayName: Tenders process
+  description: Личность процесса tender пакета tenders
+  identity:
+    kind: service
+    permissions:
+    - approvals.manage
+    - events.read
+    - observations.write
+    - skills.invoke
+    - tasks.read
+    - tasks.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

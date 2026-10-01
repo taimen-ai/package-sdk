@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+# A wrong charge goes to a manager, whatever its severity; a rejection closes as rejected.
+process: claim
+name: a billing claim is reviewed by a manager and rejected
+given:
+  principals:
+    claims-officer: [alice]
+    claims-manager: [bob]
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: billing, severity: low, confidence: 0.85}
+steps:
+  - emit:
+      observation: helpdesk.ticket_created
+      payload:
+        data: {ticketId: T-1005, customerId: C-9, customerName: Fabrikam, product: Kettle K1,
+               subject: Charged twice, text: The card was charged twice., amount: 40, currency: EUR}
+  - expect:
+      data: {reviewRole: claims-manager, routeNote: "Billing: a manager reviews it"}
+      tasks: [{step: review-claim, assignee: "role:claims-manager"}]
+  - complete:
+      step: review-claim
+      by: bob
+      output: {resolution: rejection, refundAmount: 0, reply: The second charge was a hold and has been released.}
+  - complete:
+      step: send-reply
+      by: bob
+      output: {ticketId: T-1005, message: The second charge was a hold and has been released.}
+  - expect: {status: completed, outcome: rejected}

@@ -1,0 +1,142 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://taimen.ai/schema/packages/v1/knowledge-pack.schema.json",
+  "title": "Пакет онтологии памяти",
+  "description": "Форма пакета видов и связей базы знаний. Пакет регистрируется через ядро (POST /api/v1/knowledge/packs) и включается для дерева workspace. memory-service разбирает name, version, scope, namespace, kinds (kind, kindAliases, aliases, naturalKey, idPatterns, attributes, searchable) и relations; остальные поля — данные загрузчиков и генератора шаблонов импорта, память их пропускает.",
+  "type": "object",
+  "required": ["name", "version", "kinds"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "description": "Имя пакета без префикса. Ссылка на пакет арендатора в настройке namespace — tenant:<имя>@<версия>"
+    },
+    "version": {"type": ["string", "integer"], "description": "Версия пакета; шаблоны видов версионируются ею"},
+    "scope": {
+      "enum": ["common", "tenant"],
+      "default": "common",
+      "description": "common — общий пакет, регистрирует администратор платформы; tenant — пакет арендатора по праву knowledge.packs.manage: виден и включается только в namespace-владельце и под ним, имена пакета, видов и связей не совпадают с общими"
+    },
+    "namespace": {
+      "type": "string", "minLength": 1,
+      "description": "Namespace-владелец пакета арендатора (scope: tenant); при регистрации через ядро его подставляет ядро по workspace"
+    },
+    "description": {"type": "string", "maxLength": 1000},
+    "extends": {
+      "type": "array", "maxItems": 10,
+      "items": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{0,63}@[^@\\s]+$"},
+      "description": "Пакеты, на виды которых ссылаются связи и профили этого пакета (например company@1). Базовый пакет не меняется"
+    },
+    "kinds": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/kind"}},
+    "relations": {"type": "array", "maxItems": 128, "items": {"$ref": "#/$defs/relation"}},
+    "profiles": {
+      "type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/profile"},
+      "description": "Профили атрибутов видов, в том числе видов других пакетов: так пакет описывает атрибуты чужого вида, не меняя и не переобъявляя его (credential с type: sro_membership у расширения отрасли, legal_entity пакета default у company). Проверяют загрузчики и генератор шаблонов"
+    },
+    "expiry": {
+      "type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/expiry"},
+      "description": "Кому и за сколько дней ставить задачу об истечении validUntil вида (правило knowledge-expiry). Без записи — роль владельца базы знаний и 30 дней"
+    }
+  },
+  "$defs": {
+    "name": {"type": "string", "pattern": "^[a-z][a-z0-9_]{0,63}$"},
+    "kind": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "#/$defs/name"},
+        "title": {"type": "string", "maxLength": 200, "description": "Название вида для людей — заголовок шаблона и раздела консоли"},
+        "description": {"type": "string", "maxLength": 2000},
+        "kindAliases": {"type": "array", "maxItems": 16, "items": {"$ref": "#/$defs/name"}},
+        "aliases": {"type": "array", "maxItems": 16, "items": {"type": "string"}},
+        "naturalKey": {
+          "description": "Форма естественного ключа: шаблон с плейсхолдерами (\"offering:<source>:<id>\") или JSON Schema строки",
+          "oneOf": [{"type": "string", "minLength": 1}, {"type": "object"}]
+        },
+        "idPatterns": {"type": "array", "maxItems": 8, "items": {"type": "string"}},
+        "attributes": {"$ref": "#/$defs/attributes"},
+        "searchable": {
+          "type": "object",
+          "required": ["fields"],
+          "additionalProperties": false,
+          "description": "Вид находится поиском по смыслу: сверка индексирует эмбеддинг из title сущности и значений перечисленных атрибутов; каждый атрибут объявлен в attributes.properties", "$comment": "MEM-ADR-020",
+          "properties": {
+            "fields": {
+              "type": "array", "minItems": 1, "maxItems": 20,
+              "items": {"type": "string", "pattern": "^[A-Za-z_][A-Za-z0-9_]{0,63}$"}
+            }
+          }
+        }
+      }
+    },
+    "attributes": {
+      "type": "object",
+      "description": "JSON Schema атрибутов вида (draft 2020-12). title и description свойства — заголовок и подсказка колонки шаблона; type, format, enum — проверка; required — обязательность. Сроки действия — по соглашению validFrom и validUntil (format: date). Свойство с персональными данными физического лица допустимо только с x-personal-data: allowed — такие значения не попадают в промпты ИИ",
+      "properties": {
+        "type": {"const": "object"},
+        "properties": {
+          "type": "object",
+          "properties": {
+            "validFrom": {"$ref": "#/$defs/dateProperty"},
+            "validUntil": {"$ref": "#/$defs/dateProperty"}
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "x-personal-data": {"const": "allowed"}
+            }
+          }
+        }
+      }
+    },
+    "dateProperty": {
+      "type": "object",
+      "required": ["type", "format"],
+      "properties": {
+        "type": {"const": "string"},
+        "format": {"const": "date"}
+      },
+      "description": "Соглашение сроков: validFrom и validUntil — день ISO 8601"
+    },
+    "relation": {
+      "type": "object",
+      "required": ["relation"],
+      "additionalProperties": false,
+      "properties": {
+        "relation": {"$ref": "#/$defs/name"},
+        "title": {"type": "string", "maxLength": 200, "description": "Заголовок колонки связи в шаблоне"},
+        "fromKinds": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/name"}},
+        "toKinds": {"type": "array", "maxItems": 64, "items": {"$ref": "#/$defs/name"}},
+        "temporal": {"type": "boolean", "default": true},
+        "cardinality": {"enum": ["one", "many"], "default": "many"}
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["kind", "attributes"],
+      "description": "Атрибуты вида этого или другого пакета. С when — у сущностей, где атрибут равен значению (credential с type: sro_membership); без when — у всех сущностей вида (атрибуты legal_entity пакета default)",
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "#/$defs/name"},
+        "when": {
+          "type": "object", "required": ["attr", "equals"], "additionalProperties": false,
+          "properties": {"attr": {"type": "string"}, "equals": {"type": ["string", "number", "boolean"]}}
+        },
+        "title": {"type": "string", "maxLength": 200},
+        "attributes": {"$ref": "#/$defs/attributes"}
+      }
+    },
+    "expiry": {
+      "type": "object",
+      "required": ["kind"],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {"$ref": "#/$defs/name"},
+        "role": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$", "description": "Роль, которой ставится задача"},
+        "leadDays": {"type": "integer", "minimum": 1, "maximum": 365}
+      }
+    }
+  }
+}

@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Пакет-фикстура пирамиды тестов (S021): процесс, правило вывода работы и тип задачи с
+# гейтом — у каждого сценарий; код интеграции со скиллом и его unit-тестом.
+apiVersion: taimen.ai/v1
+kind: Package
+key: review-flow
+spec:
+  version: 0.1.0
+  displayName: Review flow (test fixture)
+  requires: [review-base]

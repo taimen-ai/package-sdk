@@ -1,0 +1,18 @@
+subject: rule
+rule: claim-reopened
+name: a reopened ticket of a closed claim creates a review
+given:
+  variables: {CLAIMS_REFUND_THRESHOLD: "50000"}
+  observation:
+    kind: helpdesk.ticket_reopened
+    data: {ticketId: T-1, claimKey: T-1}
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: complaint, confidence: 0.91}
+steps:
+  - expect:
+      result: matched
+      ensureWork:
+        - type: claim-review
+          customFields: {ticketId: T-1, category: complaint}

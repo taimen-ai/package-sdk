@@ -1,0 +1,156 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "control-plane",
+    "version": "0.9.0"
+  },
+  "paths": {
+    "/api/v1/packages:record": {
+      "post": {
+        "summary": "Link the objects an installer applied through their routes to their package",
+        "operationId": "record_package_api_v1_packages_record_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PackageRecordRequest"
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "PackageRecordRequest": {
+        "properties": {
+          "package": {
+            "$ref": "#/components/schemas/PackageRef"
+          },
+          "installHash": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installhash",
+            "description": "The installation as the installer identifies it (e.g. sha256 of the package files); returned as package.installHash of the objects"
+          },
+          "objects": {
+            "items": {
+              "$ref": "#/components/schemas/PackageRecordedObject"
+            },
+            "type": "array",
+            "maxItems": 1000,
+            "minItems": 1,
+            "title": "Objects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "package",
+          "objects"
+        ],
+        "title": "PackageRecordRequest",
+        "description": "``POST /packages:record``: the objects one package's installation applied.\n\nEvery object of the package the installer applied, the unchanged ones too:\nthe link moves to this version of the package. Processes and calendars are\nlinked by ``POST /packages:apply``."
+      },
+      "PackageRef": {
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Key"
+          },
+          "version": {
+            "type": "string",
+            "maxLength": 100,
+            "minLength": 1,
+            "title": "Version"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "key",
+          "version"
+        ],
+        "title": "PackageRef",
+        "description": "A package as its installer names it: ``package.yaml`` key and version."
+      },
+      "PackageRecordedObject": {
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ArtifactType",
+              "TaskType",
+              "ProjectTemplate",
+              "WorkspaceType",
+              "Role",
+              "Capability",
+              "Skill",
+              "WorkRule",
+              "Agent"
+            ],
+            "title": "Kind"
+          },
+          "key": {
+            "type": "string",
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Key",
+            "description": "key; slug of a Role, name of a Capability or Skill"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "key"
+        ],
+        "title": "PackageRecordedObject"
+      },
+      "PackageRecordOut": {
+        "properties": {
+          "package": {
+            "$ref": "#/components/schemas/PackageRef"
+          },
+          "installHash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Installhash"
+          },
+          "recorded": {
+            "items": {
+              "$ref": "#/components/schemas/PackageRecordedObject"
+            },
+            "type": "array",
+            "title": "Recorded"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "package",
+          "installHash",
+          "recorded"
+        ],
+        "title": "PackageRecordOut"
+      }
+    }
+  }
+}

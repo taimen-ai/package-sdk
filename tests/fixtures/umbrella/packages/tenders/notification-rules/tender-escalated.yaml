@@ -1,0 +1,29 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Эскалация срока процесса tender (process.escalated с action notify, CP-ADR-0074 §7):
+# шаг не сделан в срок — уведомление ответственному за эскалации. Уровни эскалации
+# (напоминание исполнителю, затем генеральному директору) объявляет процесс; движок
+# только публикует событие, а доставку делает сервис уведомлений по этому правилу.
+#
+# Адресат — principal из переменной установки ${TENDERS_ESCALATION_PRINCIPAL_ID}
+# (обычно генеральный директор): роль из escalations[].to событие несёт текстом
+# role:<slug>, а адресат role сервиса уведомлений требует id роли по пути в событии —
+# адресовать эскалацию той роли, которую назвал процесс, правило пока не может.
+apiVersion: taimen.ai/v1
+kind: NotificationRule
+key: tender-escalated
+spec:
+  description: Шаг процесса tender не сделан в срок — эскалация ответственному.
+  "on":
+    type: process.escalated
+    when:
+      and:
+        - {eq: [{var: payload.definitionKey}, tender]}
+        - {eq: [{var: payload.action}, notify]}
+  recipient: {kind: principal, ref: "${TENDERS_ESCALATION_PRINCIPAL_ID}"}
+  notification:
+    type: process.escalated
+    title: "Просрочен шаг закупки {{payload.instanceKey}}: {{payload.element}}"
+    body: |-
+      Закупка {{payload.instanceKey}}: шаг «{{payload.element}}» не сделан в срок.
+      Уровень эскалации: {{payload.level}}.
+  dedupKeyTemplate: "tender:escalated:{{payload.instanceId}}:{{payload.element}}:{{payload.level}}"

@@ -1,0 +1,25 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Документ закупки из ЕИС (извещение, проект контракта, описание объекта, протоколы):
+# артефакт-ссылка, который заводит коннектор eis-connector (POST /artifacts, uri —
+# хранилище ЕИС, байты не копируются). Процесс tender объявляет эти артефакты
+# документами дела (memory.documents): память получает их ингестом документов.
+apiVersion: taimen.ai/v1
+kind: ArtifactType
+key: procurement-document
+spec:
+  displayName: Документ закупки
+  description: Файл документа закупки ЕИС — ссылка на хранилище ЕИС с метаданными
+  metadataSchema:
+    type: object
+    required: [purchaseNumber]
+    properties:
+      source: {type: string, maxLength: 40}
+      purchaseNumber: {type: string, maxLength: 40}
+      law: {type: string, maxLength: 20}
+      docType: {type: string, maxLength: 100}
+      publishedContentId: {type: string, maxLength: 100}
+      fileName: {type: string, maxLength: 500}
+      size: {type: integer, minimum: 0}
+      kind: {type: string, maxLength: 300}
+      kindCode: {type: string, maxLength: 40}
+      date: {type: string, maxLength: 40}

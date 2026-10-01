@@ -1,0 +1,43 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Релиз компонента не публикуется (TAI-ADR-0043 п.1, амендмент о релизах): релиз на
+# закреплённой суперпроектом ревизии не прошёл oss.check@2 — одна работа devops на
+# компонент с причиной и находками (файл, строка, номер правила; текст стоп-листа не
+# раскрывается). Закрывает её правило oss-check-resolved, когда компонент опубликован
+# (или релиза на закреплённой ревизии нет — no_release).
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: oss-check-red
+spec:
+  description: Релиз компонента не публикуется — работа devops
+  workspaceId: ${SELFDEV_WORKSPACE_ID}
+  identity: {agent: selfdev-rules}
+  trigger: {kind: observation, type: repo.commit_observed}
+  condition: {eq: [{var: payload.data.repo}, project-taimen-ai]}
+  interpretation:
+    skill: oss.check@2
+    inputs:
+      superproject: ${SELFDEV_SUPERPROJECT_URL}
+      ref: "{{payload.data.sha}}"
+  action:
+    kind: ensure_work
+    taskType: devops
+    forEach: skill.output.failing
+    dedupKeyTemplate: "oss-check:{{item.component}}"
+    fields:
+      title: "{{item.component}} {{item.release}} не публикуется: {{item.reason}}"
+      priority: high
+      description: |
+        Коммит суперпроекта {{skill.output.ref}} закрепил {{item.component}} на
+        {{item.pinned}}; релиз {{item.release}} ({{item.sha}}) не уходит в открытую
+        поставку: {{item.reason}}.
+        Находки (вид проверки, файл, строка, номер правила стоп-листа): {{item.findings}}
+
+        Причины: not_publishable — исправить находки в стволе компонента и выпустить новый
+        релиз (стоп-лист лежит в deploy/oss/stoplist.txt суперпроекта); not_fast_forward —
+        зеркало ушло дальше релиза и не содержит его, указатель откатили;
+        release_tag_conflict — тег релиза в зеркале стоит на снимке другой ревизии;
+        not_on_trunk — релиз вне ствола; mirror_is_repository — у компонента не заведён
+        отдельный приватный репозиторий (deploy/oss/components.yaml); not_pinned —
+        сабмодуля нет в суперпроекте; check_unavailable — проверка не выполнилась (права,
+        gitleaks), см. details: {{item.details}}. Задача закроется сама, когда компонент
+        будет опубликован (правило oss-check-resolved).

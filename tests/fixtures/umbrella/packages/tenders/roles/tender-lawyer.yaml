@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Роль пакета tenders: анализ документации, вопросы заказчику, проект контракта.
+apiVersion: taimen.ai/v1
+kind: Role
+key: tender-lawyer
+spec:
+  name: Юрист
+  description: >-
+    Юридический анализ документации закупки, запросы разъяснений, проверка проекта контракта и протокол разногласий

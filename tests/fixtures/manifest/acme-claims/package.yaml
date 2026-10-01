@@ -1,0 +1,25 @@
+apiVersion: taimen.ai/v1
+kind: Package
+key: acme-claims
+spec:
+  version: 0.3.0
+  displayName: Customer claims
+  license: Apache-2.0
+  authors: ["Acme Integrations <dev@example.com>"]
+  engines:
+    control-plane: ">=0.9,<0.11"
+  requires:
+    - {package: acme-base, version: "^0.2"}
+  knowledge: ["claims@1"]
+  variables:
+    CLAIMS_WORKSPACE_ID:
+      kind: workspace
+      description: Root workspace of claims
+    CLAIMS_REFUND_THRESHOLD:
+      kind: integer
+      description: Refund amount above which an approval is required
+      default: "50000"
+    HELPDESK_URL:
+      kind: url
+      description: Helpdesk API the observer polls
+      example: https://helpdesk.example.com/api

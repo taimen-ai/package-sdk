@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The skills host of the package: runs claims.classify@1 and helpdesk.reply@1 from the
+# integration code installed into its image (`package-sdk image skills`, see
+# Dockerfile.skills). The host is configured by its environment: HELPDESK_URL for the
+# reply, SKILL_LLM_* for the model of the classification; the helpdesk token is a secret
+# of the node. The daemon of the host opens a session and looks for work of its own, so
+# it needs sessions.open and tasks.read besides skills.execute.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: claims-skills
+spec:
+  displayName: Claims skills
+  description: Hosts the skills of the package claims
+  identity:
+    kind: agent
+    permissions: [sessions.open, tasks.read, skills.execute]
+  executor:
+    kind: skills
+    image: registry.example.com/claims/claims-skills:0.1.0
+  skills:
+    protocols: [local]
+    local: [claims_helpdesk.skills]
+    concurrency: 2
+  placement:
+    requires: [helpdesk-access]
+    secrets: [helpdesk-token]
+    resources: {cpus: 1, memoryMb: 512}
+  state: running

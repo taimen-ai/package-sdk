@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность правил пакета sdd (TAI-ADR-0053 п.5, CP-ADR-0063 Г1): правило
+# feature-expand действует полномочиями этого principal'а — он автор задач
+# исполнения и сходимости, заведённых по документу задач. Процесса нет.
+#
+# Права — ровно то, что проверяют действия feature-expand:
+# - events.read — чтение события-триггера task.completed в workspace правила;
+# - tasks.read — представление задачи триггера и поиск работы по ключу;
+# - skills.invoke — интерпретация документа скиллом tasks.check@1;
+# - tasks.write — ensure_work и связи spawned_by / depends_on заведённой работы.
+# Связку заводит установка (IAM-principal по identity.iam и PUT
+# /agents/{key}/identity); пока её нет, оценка — failed: credential_inactive.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: sdd-rules
+spec:
+  displayName: Spec-driven development rules
+  description: Личность правил вывода работы пакета sdd
+  identity:
+    kind: service
+    permissions:
+    - events.read
+    - skills.invoke
+    - tasks.read
+    - tasks.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

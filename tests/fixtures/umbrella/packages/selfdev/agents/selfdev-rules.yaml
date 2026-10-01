@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность правил пакета selfdev (TAI-ADR-0053 п.5, CP-ADR-0063 Г1): каждое правило
+# пакета объявляет identity: {agent: selfdev-rules}, и его оценка и действия идут
+# полномочиями этого principal'а, а не того, кто применил пакет; он же — автор
+# заведённой работы и событий work.derived. Процесса нет (placement: none).
+#
+# Права — ровно то, что проверяют действия правил пакета (control-plane
+# rule_evaluations и команды, которые они зовут):
+# - events.read — чтение наблюдения-триггера в workspace правила;
+# - skills.invoke — интерпретация фактов скиллом (все правила, кроме ci-red);
+# - tasks.read, tasks.write — поиск работы по ключу, ensure_work, complete_work;
+# - claims.manage — complete_work под живым claim просит остановить run (А4);
+# - approvals.manage — gate-approval действия request_decision (submodule-lag).
+# Связку заводит установка (как у сервисов platform-services: IAM-principal по
+# identity.iam и PUT /agents/{key}/identity); пока её нет, оценка правил —
+# failed: credential_inactive.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: selfdev-rules
+spec:
+  displayName: Self-development rules
+  description: Личность правил вывода работы пакета selfdev
+  identity:
+    kind: service
+    permissions:
+    - approvals.manage
+    - claims.manage
+    - events.read
+    - skills.invoke
+    - tasks.read
+    - tasks.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

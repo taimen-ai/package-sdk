@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг legal-review (стадия analysis). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-legal-review
+spec:
+  displayName: Юридический анализ документации
+  description: >-
+    Юрист читает извещение, проект контракта и требования к участникам и решает, нужны ли вопросы заказчику.
+  fieldSchema:
+    type: object
+    required: [questionsNeeded]
+    properties:
+      questionsNeeded: {type: boolean, description: Нужен запрос разъяснений}
+      questions: {type: array, maxItems: 20, items: {type: string, maxLength: 2000}, description: Вопросы заказчику}
+      legalRisks: {type: string, maxLength: 4000}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Проверьте документацию закупки (документы — артефакты дела): требования к участнику, проект контракта, ответственность, сроки. Если нужны разъяснения — `questionsNeeded: true` и вопросы. Запрос разъяснений можно подать не позднее чем за три дня до окончания подачи заявок (ч. 5 ст. 42 44-ФЗ) — срок задачи стоит раньше.

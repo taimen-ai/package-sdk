@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# A reply to a customer waits for a decision: whoever the approval is assigned to (or
+# the holders of its role) get it with the approve and reject buttons; the buttons
+# close once the approval is decided or cancelled.
+apiVersion: taimen.ai/v1
+kind: NotificationRule
+key: claim-reply-approval
+spec:
+  description: A reply to a customer waits for a decision
+  "on":
+    type: approval.requested
+    when: {eq: [{var: task.typeKey}, claim-reply]}
+  recipient: {kind: assigned}
+  notification:
+    type: claims.reply_approval_requested
+    title: "A reply to a customer waits for your decision: {{task.publicId}}"
+    body: |-
+      {{task.title}}
+      Comment: {{payload.comment}}
+    actions: [approvalDecide]
+  dedupKeyTemplate: "claims:reply-approval:{{event.entityId}}"
+  close:
+    "on": [approval.approved, approval.rejected, approval.cancelled]

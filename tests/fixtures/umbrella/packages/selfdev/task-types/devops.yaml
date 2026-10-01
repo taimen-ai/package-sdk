@@ -1,0 +1,49 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: devops
+spec:
+  displayName: DevOps
+  description: >-
+    Слияние одобренных веток, выкладка релизов на стенды, bootstrap и секреты,
+    обслуживание раннеров. Проверяется фактом состояния стенда (smoke, версии,
+    health), а не ревью кода. Исполнитель — человек со своим харнессом: автономные
+    раннеры берут только назначенные им задачи и такие не получают.
+  fieldSchema:
+    type: object
+    properties:
+      environment:
+        type: string
+        enum: [local, staging, production, runner-host]
+        description: Где меняется состояние
+      components:
+        type: array
+        items: {type: string, maxLength: 100}
+        maxItems: 20
+        description: Затронутые компоненты по стабильным именам (control-plane, memory-service, …)
+      release:
+        type: string
+        maxLength: 200
+        description: "Что выкладывается: коммит суперпроекта или ref"
+      rollback:
+        type: string
+        maxLength: 2000
+        description: Как откатить, если выкладка не удалась
+  lifecycleSchema:
+    statuses:
+      - {key: backlog, category: backlog, displayName: Backlog}
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: blocked, category: blocked, displayName: Blocked}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: backlog, to: [todo, in_progress, blocked, done, cancelled]}
+      - {from: todo, to: [backlog, in_progress, blocked, done, cancelled]}
+      - {from: in_progress, to: [backlog, todo, blocked, done, cancelled]}
+      - {from: blocked, to: [backlog, todo, in_progress, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}

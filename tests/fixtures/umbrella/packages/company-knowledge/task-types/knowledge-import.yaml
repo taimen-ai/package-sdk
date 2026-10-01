@@ -1,0 +1,88 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Загрузка таблицы в базу знаний — решение с воротами (TAI-ADR-0056 Р3–Р4, FR-005, FR-006).
+#
+# Задачу заводят консоль, агент или команда taimen-company-knowledge-import: поля —
+# пакет, вид, источник; файл — артефакт knowledge-file; план — артефакт
+# knowledge-import-plan (выход knowledge.import_plan@1), его сводка — в описании,
+# stateRef — в полях (stateToken плана; имя поля без «token» — ядро отвергает такие ключи
+# customFields как секрет, secret_material_rejected, TASK-001190). Решение запрашивается,
+# только если план построен (planStatus ok).
+#
+# approve → knowledge.import_apply@1 (external_write, основание — это решение): тот же
+#   снимок из того же файла, применение только в состоянии плана (expectedState);
+#   snapshotId — публичный id задачи, повтор решения не пишет второй раз.
+#   applied — задача выполнена; stale — база изменилась с плана: комментарий, задача
+#   открыта, план строится заново (`taimen-company-knowledge-import replan`).
+# reject → задача отменяется, база не меняется.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: knowledge-import
+spec:
+  displayName: Knowledge import
+  description: >-
+    Решение: применить план загрузки таблицы в базу знаний. approve вызывает
+    knowledge.import_apply@1 и закрывает задачу по итогу; reject отменяет.
+  fieldSchema:
+    type: object
+    required: [pack, kind]
+    additionalProperties: false
+    properties:
+      pack: {type: string, minLength: 3, maxLength: 200, description: "Пакет вида: company@1, procurement@2, tenant:<имя>@<версия>"}
+      kind: {type: string, pattern: "^[a-z][a-z0-9_]{0,63}$", description: Вид сущностей таблицы}
+      profile: {type: string, maxLength: 64, description: Значение профиля вида (например sro)}
+      source: {type: string, pattern: "^[a-z0-9][a-z0-9:_-]{0,120}$", description: "Источник, владеющий элементами; по умолчанию template:<вид>"}
+      packs: {type: array, maxItems: 20, items: {type: string, maxLength: 200}, description: Другие включённые пакеты}
+      definitions: {type: array, maxItems: 5, items: {type: object}, description: "Описания пакетов арендатора (tenant:<имя>@<версия>) — вид не встроен в платформу"}
+      fileArtifactId: {type: string, maxLength: 64, description: Артефакт knowledge-file}
+      filename: {type: string, maxLength: 500}
+      planStatus: {type: string, enum: [ok, invalid, empty]}
+      stateRef: {type: string, maxLength: 128, description: "Состояние базы, на котором построен план (stateToken плана)"}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: blocked, category: blocked, displayName: Blocked}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, blocked, done, cancelled]}
+      - {from: in_progress, to: [todo, blocked, done, cancelled]}
+      - {from: blocked, to: [todo, in_progress, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema:
+    gates:
+      default:
+        outcomes:
+          approved:
+            - invokeSkill:
+                skill: knowledge.import_apply@1
+                inputs:
+                  fileArtifactId: "$.task.customFields.fileArtifactId!"
+                  workspaceId: "$.task.workspaceId!"
+                  pack: "$.task.customFields.pack!"
+                  kind: "$.task.customFields.kind!"
+                  profile: "$.task.customFields.profile"
+                  source: "$.task.customFields.source"
+                  packs: "$.task.customFields.packs"
+                  definitions: "$.task.customFields.definitions"
+                  filename: "$.task.customFields.filename"
+                  expectedState: "$.task.customFields.stateRef!"
+                  snapshotId: "$.task.publicId!"
+                expect: {status: applied}
+                onSuccess:
+                  - comment:
+                      body: "План загрузки применён: $.invocation.output.counts"
+                  - completeTask: {}
+                onFailure:
+                  - comment:
+                      body: |-
+                        План загрузки одобрен, но не применён: $.invocation.output.status$.invocation.error.code.
+                        $.invocation.error.message
+                        stale — база знаний изменилась с момента плана: постройте план заново (tools/knowledge.py import-replan, агент или «Загрузить» в консоли) и решите снова.
+          rejected:
+            - comment:
+                body: "Загрузка отклонена: $.approval.comment"
+            - transition: {status: cancelled}

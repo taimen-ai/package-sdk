@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# fleet-controller (TAI-ADR-0052): агенты и их фактическое состояние в ядре, IAM-агенты и их PAT (iam:agents); потолок PAT агентов не шире этой учётки.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: fleet-controller
+spec:
+  displayName: Taimen Fleet Controller
+  identity:
+    kind: service
+    permissions:
+    - agents.read
+    - agents.status.write
+    iam:
+      audiences:
+      - control-plane
+      - iam
+      - notification-service
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+      - iam:agents
+      - notifications:send
+  placement: none

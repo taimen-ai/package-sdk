@@ -1,0 +1,52 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Опубликовать релиз компонента в открытой поставке (TAI-ADR-0043, амендменты
+# 2026-09-25 и о релизах; фича oss-sync). Работу заводят правила oss-sync (коммит
+# суперпроекта) и oss-release-sync (раз в час) для каждого компонента, чей релиз —
+# semver-тег на закреплённой ревизии или её предке — прошёл oss.check; исполняет её
+# скилл oss.publish@2 (execution, CP-ADR-0056 M2.2): повторная проверка, снимок дерева
+# релиза в main зеркала только вперёд, тег релиза в зеркале, сдвиг сабмодуля в
+# umbrella. Агенту такая работа не достаётся; ревью нет — внешнее действие проверяет
+# сам скилл. Тег релиза в репозитории разработки ставит человек, не этот тип.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: oss-publish
+spec:
+  displayName: OSS publish
+  description: >-
+    Опубликовать проверенный релиз компонента снимком в зеркало с тегом и сдвинуть
+    его сабмодуль в umbrella. Исполняет скилл oss.publish@2.
+  execution:
+    skill: oss.publish
+    version: "2"
+    inputs: $.customFields
+  fieldSchema:
+    type: object
+    required: [component, sha, release, repository, mirror, umbrella, umbrellaBranch, superproject]
+    additionalProperties: false
+    properties:
+      component: {type: string, pattern: "^[a-z0-9][a-z0-9-]*$", description: Путь сабмодуля}
+      sha: {type: string, pattern: "^[0-9a-f]{40}$", description: "Коммит релиза в репозитории разработки"}
+      release: {type: string, pattern: "^[A-Za-z0-9][A-Za-z0-9._+/-]*$", maxLength: 200, description: "Тег релиза"}
+      pinned: {type: string, maxLength: 100, description: "Ревизия, закреплённая суперпроектом (релиз — она или её предок)"}
+      repository: {type: string, maxLength: 500}
+      umbrella: {type: string, maxLength: 500}
+      umbrellaBranch: {type: string, maxLength: 200}
+      superproject: {type: string, maxLength: 500}
+      superprojectRef: {type: string, maxLength: 100, description: "Коммит суперпроекта, на котором проверено"}
+      mirror: {type: string, maxLength: 500, description: "Публичное зеркало компонента (TAI-ADR-0043, амендмент 2)"}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: blocked, category: blocked, displayName: Blocked}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, blocked, done, cancelled]}
+      - {from: in_progress, to: [todo, blocked, done, cancelled]}
+      - {from: blocked, to: [todo, in_progress, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}

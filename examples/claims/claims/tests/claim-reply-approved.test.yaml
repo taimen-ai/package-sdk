@@ -1,0 +1,19 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: taskType
+taskType: claim-reply
+name: an approved reply is sent to the helpdesk and completes the task
+given:
+  task:
+    assignee: alice
+    customFields: {ticketId: T-1001, message: We refund the grinder in full.}
+  principals: {claims-officer: [alice, bob]}
+mocks:
+  skills:
+    helpdesk.reply@1:
+      - output: {replyId: R-1, status: closed}
+steps:
+  - approve: {decision: approved, by: bob}
+  - expect:
+      invokeSkill:
+        - {skill: helpdesk.reply@1, inputs: {ticketId: T-1001, message: We refund the grinder in full.}}
+      status: {category: terminal_success}

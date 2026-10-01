@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Пакет-фикстура пирамиды тестов (S021): то, что требует review-flow, — роль и скилл.
+# Песочница строит каталог из объектов пакета и его requires: без этого пакета роль
+# процесса и скилл правила review-flow не найдутся.
+apiVersion: taimen.ai/v1
+kind: Package
+key: review-base
+spec:
+  version: 0.1.0
+  displayName: Review base (test fixture)

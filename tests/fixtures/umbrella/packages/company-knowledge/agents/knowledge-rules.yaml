@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность правил пакета company-knowledge (CP-ADR-0063 Г1): правило knowledge-expiry
+# оценивается и заводит работу полномочиями этого principal'а, а не того, кто применил
+# пакет. Процесса нет (placement: none).
+#
+# Права — ровно то, что проверяют действия правила:
+# - events.read — факты расписания в workspace правила;
+# - skills.invoke — интерпретация knowledge.expiring@1;
+# - tasks.read, tasks.write — поиск работы по ключу и ensure_work.
+# Связку заводит установка (IAM service account и PUT /agents/{key}/identity, как у
+# selfdev-rules); пока её нет, оценка правила — failed: credential_inactive.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: knowledge-rules
+spec:
+  displayName: Company knowledge rules
+  description: Личность правил вывода работы пакета company-knowledge
+  identity:
+    kind: service
+    permissions:
+    - events.read
+    - skills.invoke
+    - tasks.read
+    - tasks.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

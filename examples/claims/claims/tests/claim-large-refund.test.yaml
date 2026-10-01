@@ -1,0 +1,37 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+# A refund above the threshold waits for a claims manager; the reviewer holds the role
+# too, and still cannot approve the refund of the claim they reviewed.
+process: claim
+name: a large refund is approved by a manager who did not review the claim
+given:
+  principals:
+    claims-officer: [alice]
+    claims-manager: [alice, bob]
+mocks:
+  skills:
+    claims.classify@1:
+      - output: {category: defect, severity: medium, confidence: 0.8}
+steps:
+  - emit:
+      observation: helpdesk.ticket_created
+      payload:
+        data: {ticketId: T-1002, customerId: C-8, customerName: Contoso, product: Espresso Pro,
+               subject: Broken pump, text: The pump leaks., amount: 1400, currency: EUR}
+  - complete:
+      step: review-claim
+      by: alice
+      output: {resolution: refund, refundAmount: 1400, reply: We refund the machine.}
+  - expect: {stages: {review: open, reply: not_started}}
+  # nobody decided in time: the approvers are reminded, the approval stays open
+  - advance: P2DT1H
+  - expect: {events: [process.escalated], stages: {review: open}}
+  - approve: {step: approve-refund, by: alice, decision: approve, expectRefused: separation_of_duties_violation}
+  - approve: {step: approve-refund, by: bob, decision: approve}
+  - expect:
+      data: {approval: approved, approvedBy: [bob]}
+      stages: {review: completed, reply: open}
+  - complete:
+      step: send-reply
+      by: alice
+      output: {ticketId: T-1002, message: We refund the machine.}
+  - expect: {status: completed, outcome: refunded}

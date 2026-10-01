@@ -1,0 +1,8 @@
+{
+  "format": "package-sdk.lock/v1",
+  "installation": "acme-prod",
+  "packages": [
+    {"key": "notify", "version": "0.2.0", "source": {"path": "packages/notify"}, "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000005"},
+    {"key": "helpdesk-crm", "version": "0.2.0", "source": {"git": "https://git.example.com/acme/helpdesk-crm.git", "ref": "v0.2.0"}, "commit": "0123456789abcdef0123456789abcdef01234567", "contentHash": "sha256:0000000000000000000000000000000000000000000000000000000000000006"}
+  ]
+}

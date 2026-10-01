@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# «Оплатить счёт поставщика»: задача шага pay процесса invoice-payment — её заводит
+# процесс после согласования, бухгалтерия сдаёт форму (дата оплаты, номер платёжного
+# поручения). Согласование и уведомление бухгалтерии — шаги процесса (0.3.0), а не
+# исходы approval этого типа, как было при правиле invoice-received: у типа больше
+# нет approvalSchema, решение не приходит в задачу оплаты.
+# Заключение проверки счёта (invoice-review) — необязательный вход от задачи, от
+# которой оплата зависит (depends_on).
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: invoice-payment
+spec:
+  displayName: Оплатить счёт
+  description: Оплата согласованного счёта поставщика
+  lifecycleSchema:
+    statuses:
+      - {key: to_pay, category: active, displayName: К оплате}
+      - {key: paying, category: active, displayName: Оплачивается}
+      - {key: on_hold, category: blocked, displayName: Приостановлено}
+      - {key: paid, category: terminal_success, displayName: Оплачено}
+      - {key: withdrawn, category: terminal_cancelled, displayName: Отозвано}
+    transitions:
+      - {from: to_pay, to: [paying, on_hold, paid, withdrawn]}
+      - {from: paying, to: [to_pay, on_hold, paid, withdrawn]}
+      - {from: on_hold, to: [to_pay, paying, paid, withdrawn]}
+    initialStatus: to_pay
+    claimStatus: paying
+    releaseStatus: to_pay
+    completionStatus: paid
+  artifactSchema:
+    inputs:
+      - {key: review, type: invoice-review, from: depends_on, required: false}

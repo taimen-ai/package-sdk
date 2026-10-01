@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# Owns the process, reviews high-severity claims and approves refunds above the
+# threshold. A manager never approves a refund of a claim they reviewed themselves.
+apiVersion: taimen.ai/v1
+kind: Role
+key: claims-manager
+spec:
+  name: Claims manager
+  description: Approves large refunds and reviews high-severity claims

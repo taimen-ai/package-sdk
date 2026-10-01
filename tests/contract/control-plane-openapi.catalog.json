@@ -1,0 +1,1976 @@
+{
+ "components": {
+  "schemas": {
+   "AcceptanceCheckSpec": {
+    "additionalProperties": false,
+    "description": "One declared check, executed by the verification stage (CP-ADR-0067).\n\nOn a task, ``spec`` follows the grammar of ``kind``: ``deterministic`` —\n``{skill: name@version, inputs?, expect?}`` or ``{artifact: {type,\nmediaTypes?, content?}}``; ``external_state`` —\n``{event?}``; ``human`` — ``{approver? | approverRole?}``; ``llm_judge`` —\nas ``human`` plus ``rubric?``. A spec outside it is\n``422 invalid_acceptance_spec``. On a goal it is not interpreted.\n\n``when`` — ``$.task`` expressions (CP-ADR-0061 grammar) that must all\nresolve to something when the attempt reaches the check; otherwise the\ncheck is ``skipped`` with reason ``condition_unmet``. Not on a goal.",
+    "properties": {
+     "description": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Description",
+      "type": "string"
+     },
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "title": "Key",
+      "type": "string"
+     },
+     "kind": {
+      "enum": [
+       "deterministic",
+       "external_state",
+       "human",
+       "llm_judge"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "spec": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Spec"
+     },
+     "when": {
+      "anyOf": [
+       {
+        "items": {
+         "maxLength": 500,
+         "minLength": 1,
+         "type": "string"
+        },
+        "maxItems": 8,
+        "minItems": 1,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "When"
+     }
+    },
+    "required": [
+     "key",
+     "kind",
+     "description"
+    ],
+    "title": "AcceptanceCheckSpec",
+    "type": "object"
+   },
+   "AgentExecutorSpec": {
+    "additionalProperties": false,
+    "description": "How the agent executes. ``kind`` is a string, never a vendor enum (art. II).",
+    "properties": {
+     "instructions": {
+      "default": "",
+      "maxLength": 65536,
+      "title": "Instructions",
+      "type": "string"
+     },
+     "kind": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z][a-z0-9-]*$",
+      "title": "Kind",
+      "type": "string"
+     },
+     "params": {
+      "additionalProperties": true,
+      "description": "Parameters of the executor kind; checked by its schema, not by the core",
+      "title": "Params",
+      "type": "object"
+     }
+    },
+    "required": [
+     "kind"
+    ],
+    "title": "AgentExecutorSpec",
+    "type": "object"
+   },
+   "AgentIamSpec": {
+    "additionalProperties": false,
+    "description": "The IAM part of the identity: data for whoever issues the account, not the core.",
+    "properties": {
+     "audiences": {
+      "items": {
+       "maxLength": 100,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 20,
+      "minItems": 1,
+      "title": "Audiences",
+      "type": "array"
+     },
+     "scopeCeiling": {
+      "items": {
+       "maxLength": 200,
+       "pattern": "^[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$",
+       "type": "string"
+      },
+      "maxItems": 50,
+      "minItems": 1,
+      "title": "Scopeceiling",
+      "type": "array"
+     }
+    },
+    "required": [
+     "audiences",
+     "scopeCeiling"
+    ],
+    "title": "AgentIamSpec",
+    "type": "object"
+   },
+   "AgentIdentitySpec": {
+    "additionalProperties": false,
+    "description": "Who the agent is: the core derives its principal and binding from this.",
+    "properties": {
+     "capabilities": {
+      "items": {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Capabilities",
+      "type": "array"
+     },
+     "iam": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentIamSpec"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Audiences and scope ceiling of the IAM account; stored, not interpreted"
+     },
+     "kind": {
+      "enum": [
+       "agent",
+       "service"
+      ],
+      "title": "Kind",
+      "type": "string"
+     },
+     "permissions": {
+      "items": {
+       "pattern": "^[a-z_]+(\\.[a-z_]+)+$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "minItems": 1,
+      "title": "Permissions",
+      "type": "array"
+     },
+     "roles": {
+      "items": {
+       "maxLength": 63,
+       "minLength": 2,
+       "pattern": "^[a-z0-9][a-z0-9-]*$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Roles",
+      "type": "array"
+     }
+    },
+    "required": [
+     "kind",
+     "permissions"
+    ],
+    "title": "AgentIdentitySpec",
+    "type": "object"
+   },
+   "AgentOut": {
+    "additionalProperties": false,
+    "properties": {
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "currentRevision": {
+      "title": "Currentrevision",
+      "type": "integer"
+     },
+     "displayName": {
+      "title": "Displayname",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "key": {
+      "title": "Key",
+      "type": "string"
+     },
+     "package": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/PackageLinkOut"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The package that installed the object (the key, all its versions); null for an object created by hand. Filter a list with ?package=<key>"
+     },
+     "principalId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Principal of the agent once its identity is linked (§6)",
+      "title": "Principalid"
+     },
+     "replicas": {
+      "title": "Replicas",
+      "type": "integer"
+     },
+     "retiredAt": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Retiredat"
+     },
+     "retiredBy": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Retiredby"
+     },
+     "revision": {
+      "$ref": "#/components/schemas/AgentRevisionOut",
+      "description": "The current revision, or the one addressed by key@revision"
+     },
+     "state": {
+      "enum": [
+       "running",
+       "stopped"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "status": {
+      "enum": [
+       "active",
+       "retired"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "tenantId": {
+      "format": "uuid",
+      "title": "Tenantid",
+      "type": "string"
+     },
+     "updatedAt": {
+      "format": "date-time",
+      "title": "Updatedat",
+      "type": "string"
+     },
+     "version": {
+      "title": "Version",
+      "type": "integer"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "id",
+     "tenantId",
+     "key",
+     "displayName",
+     "status",
+     "state",
+     "replicas",
+     "currentRevision",
+     "revision",
+     "principalId",
+     "workspaceId",
+     "retiredAt",
+     "retiredBy",
+     "version",
+     "createdAt",
+     "updatedAt"
+    ],
+    "title": "AgentOut",
+    "type": "object"
+   },
+   "AgentPackageRef": {
+    "additionalProperties": false,
+    "description": "The package whose apply published a revision, as its installer names it.",
+    "properties": {
+     "key": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Key",
+      "type": "string"
+     },
+     "version": {
+      "maxLength": 100,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "version"
+    ],
+    "title": "AgentPackageRef",
+    "type": "object"
+   },
+   "AgentPlacementSpec": {
+    "additionalProperties": false,
+    "description": "Where the agent may run. The core stores it; the placement service reads it.",
+    "properties": {
+     "drainSeconds": {
+      "default": 14400,
+      "maximum": 14400.0,
+      "minimum": 0.0,
+      "title": "Drainseconds",
+      "type": "integer"
+     },
+     "replicas": {
+      "default": 1,
+      "description": "Desired state, not revision",
+      "maximum": 20.0,
+      "minimum": 0.0,
+      "title": "Replicas",
+      "type": "integer"
+     },
+     "requires": {
+      "description": "Labels a node must carry: name or name=value",
+      "items": {
+       "maxLength": 100,
+       "pattern": "^[a-z0-9][a-z0-9.-]*(=[a-zA-Z0-9._-]+)?$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Requires",
+      "type": "array"
+     },
+     "resources": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentResourcesSpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "secrets": {
+      "description": "Names of node secrets; a value never reaches the core (FR-008)",
+      "items": {
+       "pattern": "^[a-z0-9][a-z0-9-]{0,62}$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Secrets",
+      "type": "array"
+     }
+    },
+    "title": "AgentPlacementSpec",
+    "type": "object"
+   },
+   "AgentPublishRequest": {
+    "additionalProperties": false,
+    "description": "``POST /agents`` and ``POST /agents:validate``: a catalog object without its envelope.",
+    "properties": {
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "title": "Key",
+      "type": "string"
+     },
+     "package": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentPackageRef"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Set by a package installer: a new revision records the package as its source; without it the revision is a manual edit. Not part of the spec hash"
+     },
+     "spec": {
+      "$ref": "#/components/schemas/AgentSpec"
+     }
+    },
+    "required": [
+     "key",
+     "spec"
+    ],
+    "title": "AgentPublishRequest",
+    "type": "object"
+   },
+   "AgentResourcesSpec": {
+    "additionalProperties": false,
+    "properties": {
+     "cpus": {
+      "anyOf": [
+       {
+        "anyOf": [
+         {
+          "type": "integer"
+         },
+         {
+          "type": "number"
+         }
+        ],
+        "gt": 0,
+        "le": 64
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Cpus"
+     },
+     "memoryMb": {
+      "anyOf": [
+       {
+        "maximum": 262144.0,
+        "minimum": 64.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Memorymb"
+     }
+    },
+    "title": "AgentResourcesSpec",
+    "type": "object"
+   },
+   "AgentReviewSpec": {
+    "additionalProperties": false,
+    "description": "How the branch of a task goes to review.",
+    "properties": {
+     "base": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Base"
+     },
+     "mode": {
+      "anyOf": [
+       {
+        "enum": [
+         "human",
+         "agent",
+         "none"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Mode"
+     },
+     "reviewer": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Reviewer"
+     },
+     "taskType": {
+      "anyOf": [
+       {
+        "maxLength": 63,
+        "minLength": 1,
+        "pattern": "^[a-z0-9][a-z0-9_-]*$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Tasktype"
+     },
+     "taskTypes": {
+      "description": "Task types whose branches get a review",
+      "items": {
+       "maxLength": 63,
+       "minLength": 1,
+       "pattern": "^[a-z0-9][a-z0-9_-]*$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Tasktypes",
+      "type": "array"
+     }
+    },
+    "title": "AgentReviewSpec",
+    "type": "object"
+   },
+   "AgentRevisionOut": {
+    "additionalProperties": false,
+    "properties": {
+     "agentId": {
+      "format": "uuid",
+      "title": "Agentid",
+      "type": "string"
+     },
+     "agentKey": {
+      "title": "Agentkey",
+      "type": "string"
+     },
+     "createdAt": {
+      "format": "date-time",
+      "title": "Createdat",
+      "type": "string"
+     },
+     "createdBy": {
+      "format": "uuid",
+      "title": "Createdby",
+      "type": "string"
+     },
+     "id": {
+      "format": "uuid",
+      "title": "Id",
+      "type": "string"
+     },
+     "revision": {
+      "title": "Revision",
+      "type": "integer"
+     },
+     "spec": {
+      "additionalProperties": true,
+      "description": "The published spec as applied, without state and placement.replicas",
+      "title": "Spec",
+      "type": "object"
+     },
+     "specHash": {
+      "description": "sha256:<hex> of the canonical JSON of spec",
+      "title": "Spechash",
+      "type": "string"
+     }
+    },
+    "required": [
+     "id",
+     "agentId",
+     "agentKey",
+     "revision",
+     "spec",
+     "specHash",
+     "createdBy",
+     "createdAt"
+    ],
+    "title": "AgentRevisionOut",
+    "type": "object"
+   },
+   "AgentSkillsSpec": {
+    "additionalProperties": false,
+    "description": "Which skills the agent executes itself (CP-ADR-0056) and where they may go.\n\n``invoke`` is the other direction: skill versions the agent calls through\n``POST /skills/{ref}:invoke`` rather than hosts (amendment 2026-09-28).",
+    "properties": {
+     "audiences": {
+      "description": "IAM audiences the skills get a token for",
+      "items": {
+       "maxLength": 100,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Audiences",
+      "type": "array"
+     },
+     "concurrency": {
+      "anyOf": [
+       {
+        "maximum": 32.0,
+        "minimum": 1.0,
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Concurrency"
+     },
+     "httpOrigins": {
+      "items": {
+       "maxLength": 500,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Httporigins",
+      "type": "array"
+     },
+     "invoke": {
+      "description": "Skill versions the agent calls through the core (name@version); the registry assigns them to its principal",
+      "items": {
+       "maxLength": 251,
+       "pattern": "^[^@\\s/]{1,200}@[^@\\s/]{1,50}$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Invoke",
+      "type": "array"
+     },
+     "local": {
+      "description": "Allowed entry points or packages",
+      "items": {
+       "pattern": "^[A-Za-z_][\\w.]*(:[A-Za-z_]\\w*)?$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Local",
+      "type": "array"
+     },
+     "mcpOrigins": {
+      "items": {
+       "maxLength": 500,
+       "minLength": 1,
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Mcporigins",
+      "type": "array"
+     },
+     "protocols": {
+      "items": {
+       "enum": [
+        "local",
+        "http",
+        "mcp"
+       ],
+       "type": "string"
+      },
+      "title": "Protocols",
+      "type": "array"
+     }
+    },
+    "title": "AgentSkillsSpec",
+    "type": "object"
+   },
+   "AgentSpec": {
+    "additionalProperties": false,
+    "description": "``spec`` of a catalog object of kind ``Agent`` (TAI-ADR-0052).",
+    "properties": {
+     "description": {
+      "anyOf": [
+       {
+        "maxLength": 2000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Description"
+     },
+     "displayName": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Displayname",
+      "type": "string"
+     },
+     "executor": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentExecutorSpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "identity": {
+      "$ref": "#/components/schemas/AgentIdentitySpec"
+     },
+     "placement": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentPlacementSpec"
+       },
+       {
+        "const": "none",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Absent means placed with the defaults; none means no process",
+      "title": "Placement"
+     },
+     "skills": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentSkillsSpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "state": {
+      "default": "running",
+      "description": "Desired state, not revision",
+      "enum": [
+       "running",
+       "stopped"
+      ],
+      "title": "State",
+      "type": "string"
+     },
+     "work": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentWorkSpec"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Absent for identities that take no work (placement none)"
+     },
+     "workingCopy": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentWorkingCopySpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     }
+    },
+    "required": [
+     "displayName",
+     "identity"
+    ],
+    "title": "AgentSpec",
+    "type": "object"
+   },
+   "AgentWorkSpec": {
+    "additionalProperties": false,
+    "description": "Which work the agent takes: the same selection a runner does today.",
+    "properties": {
+     "includeSubprojects": {
+      "default": false,
+      "title": "Includesubprojects",
+      "type": "boolean"
+     },
+     "onlyAssigned": {
+      "default": true,
+      "title": "Onlyassigned",
+      "type": "boolean"
+     },
+     "project": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Project"
+     },
+     "taskTypes": {
+      "description": "Task type keys; empty means any type",
+      "items": {
+       "maxLength": 63,
+       "minLength": 1,
+       "pattern": "^[a-z0-9][a-z0-9_-]*$",
+       "type": "string"
+      },
+      "maxItems": 200,
+      "title": "Tasktypes",
+      "type": "array"
+     },
+     "workspace": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspace"
+     }
+    },
+    "title": "AgentWorkSpec",
+    "type": "object"
+   },
+   "AgentWorkingCopySpec": {
+    "additionalProperties": false,
+    "description": "The working copy of a task (TAI-ADR-0016 p.5): repository, neighbours, publishing.",
+    "properties": {
+     "baseRef": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Baseref"
+     },
+     "directory": {
+      "anyOf": [
+       {
+        "pattern": "^[a-z0-9][a-z0-9._-]*$",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Directory"
+     },
+     "neighbours": {
+      "description": "Neighbour repositories at the revisions the superproject pins",
+      "patternProperties": {
+       "^[a-z0-9][a-z0-9._-]*$": {
+        "maxLength": 500,
+        "minLength": 1,
+        "type": "string"
+       }
+      },
+      "title": "Neighbours",
+      "type": "object"
+     },
+     "publish": {
+      "default": true,
+      "title": "Publish",
+      "type": "boolean"
+     },
+     "repository": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Repository",
+      "type": "string"
+     },
+     "review": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/AgentReviewSpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "superproject": {
+      "anyOf": [
+       {
+        "maxLength": 500,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Superproject"
+     }
+    },
+    "required": [
+     "repository"
+    ],
+    "title": "AgentWorkingCopySpec",
+    "type": "object"
+   },
+   "ArtifactCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "content": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Content"
+     },
+     "contentRef": {
+      "anyOf": [
+       {
+        "maxLength": 100,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Contentref"
+     },
+     "metadata": {
+      "additionalProperties": true,
+      "title": "Metadata",
+      "type": "object"
+     },
+     "name": {
+      "maxLength": 500,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "runId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Runid"
+     },
+     "supersedesArtifactId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Supersedesartifactid"
+     },
+     "task": {
+      "anyOf": [
+       {
+        "maxLength": 100,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task"
+     },
+     "type": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Type",
+      "type": "string"
+     },
+     "uri": {
+      "anyOf": [
+       {
+        "maxLength": 2000,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Uri"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "type",
+     "name"
+    ],
+    "title": "ArtifactCreateRequest",
+    "type": "object"
+   },
+   "ArtifactTypeCreateRequest": {
+    "additionalProperties": false,
+    "description": "Creating a version, never editing one: the server allocates `version`.\n\n``mediaTypes`` and ``maxBytes`` are checked by the command, so an empty\nlist or a ceiling above ``CP_ARTIFACT_MAX_BYTES`` is ``invalid_artifact_type``\nlike every other defect of the definition (CP-ADR-0072 §6).",
+    "properties": {
+     "description": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+     },
+     "displayName": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Displayname",
+      "type": "string"
+     },
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Key",
+      "type": "string"
+     },
+     "maxBytes": {
+      "anyOf": [
+       {
+        "type": "integer"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Maxbytes"
+     },
+     "mediaTypes": {
+      "items": {},
+      "title": "Mediatypes",
+      "type": "array"
+     },
+     "metadataSchema": {
+      "additionalProperties": true,
+      "title": "Metadataschema",
+      "type": "object"
+     }
+    },
+    "required": [
+     "key",
+     "displayName",
+     "mediaTypes"
+    ],
+    "title": "ArtifactTypeCreateRequest",
+    "type": "object"
+   },
+   "CapabilityCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "CapabilityCreateRequest",
+    "type": "object"
+   },
+   "KnowledgePackRegisterRequest": {
+    "additionalProperties": true,
+    "description": "A domain pack manifest, forwarded to Memory as-is (CP-ADR-0060).\n\nOnly ``scope`` is the core's to read: absent -- a shared pack, registered\nby platform administrators; ``tenant`` -- a pack of the caller's tenant,\nregistered under ``knowledge.packs.manage`` (amendment 2026-09-28).\n``name`` and ``version`` are checked by the core with ``422 pack_invalid``,\nthe rest of the manifest by Memory. The owner of a tenant pack is the\ncore's to name: a ``namespace`` in the manifest is refused.",
+    "properties": {
+     "name": {
+      "description": "Pack name (Memory's grammar).",
+      "title": "Name"
+     },
+     "scope": {
+      "anyOf": [
+       {
+        "enum": [
+         "common",
+         "tenant"
+        ],
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Absent or common: a shared pack (Memory's default scope). tenant: a pack of the caller's tenant.",
+      "title": "Scope"
+     },
+     "version": {
+      "description": "Pack version: a string or a number.",
+      "title": "Version"
+     }
+    },
+    "title": "KnowledgePackRegisterRequest",
+    "type": "object"
+   },
+   "KnowledgeSnapshotRequest": {
+    "additionalProperties": false,
+    "description": "A snapshot to apply. ``expectedState`` (CP-ADR-0060 amendment\n2026-09-28) applies it only while the knowledge of its source is still in\nthe state a preview showed: otherwise ``409 snapshot_stale``.",
+    "properties": {
+     "entities": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "maxItems": 20000,
+      "title": "Entities",
+      "type": "array"
+     },
+     "expectedState": {
+      "anyOf": [
+       {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Expectedstate"
+     },
+     "observedAt": {
+      "format": "date-time",
+      "title": "Observedat",
+      "type": "string"
+     },
+     "pack": {
+      "anyOf": [
+       {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Pack"
+     },
+     "relations": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "maxItems": 20000,
+      "title": "Relations",
+      "type": "array"
+     },
+     "scope": {
+      "anyOf": [
+       {
+        "maxLength": 200,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Scope"
+     },
+     "snapshotId": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Snapshotid",
+      "type": "string"
+     },
+     "source": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Source",
+      "type": "string"
+     },
+     "workspaceId": {
+      "format": "uuid",
+      "title": "Workspaceid",
+      "type": "string"
+     }
+    },
+    "required": [
+     "workspaceId",
+     "source",
+     "snapshotId",
+     "observedAt"
+    ],
+    "title": "KnowledgeSnapshotRequest",
+    "type": "object"
+   },
+   "ObservationCreateRequest": {
+    "additionalProperties": false,
+    "description": "Explicit remember: only intentional, externalized knowledge — never\nhidden reasoning, raw prompts or terminal history.",
+    "properties": {
+     "assertions": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "maxItems": 200,
+      "title": "Assertions",
+      "type": "array"
+     },
+     "content": {
+      "maxLength": 65536,
+      "minLength": 1,
+      "title": "Content",
+      "type": "string"
+     },
+     "data": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Data"
+     },
+     "dedupKey": {
+      "anyOf": [
+       {
+        "maxLength": 512,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Dedupkey"
+     },
+     "externalRef": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/ObservationExternalRef"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "kind": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Kind",
+      "type": "string"
+     },
+     "observedAt": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Observedat"
+     },
+     "runId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Runid"
+     },
+     "sessionId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sessionid"
+     },
+     "source": {
+      "anyOf": [
+       {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Source"
+     },
+     "supersedes": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Supersedes"
+     },
+     "task": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Task"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "kind",
+     "content"
+    ],
+    "title": "ObservationCreateRequest",
+    "type": "object"
+   },
+   "ObservationExternalRef": {
+    "additionalProperties": false,
+    "description": "The observed object in its own system (issue, alert, commit...).",
+    "properties": {
+     "id": {
+      "maxLength": 512,
+      "minLength": 1,
+      "title": "Id",
+      "type": "string"
+     },
+     "system": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "System",
+      "type": "string"
+     },
+     "url": {
+      "anyOf": [
+       {
+        "maxLength": 2048,
+        "minLength": 1,
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Url"
+     }
+    },
+    "required": [
+     "system",
+     "id"
+    ],
+    "title": "ObservationExternalRef",
+    "type": "object"
+   },
+   "PackageLinkOut": {
+    "additionalProperties": false,
+    "description": "The package that installed a catalog object (CP-ADR-0074 §11, amendment TASK-000904).",
+    "properties": {
+     "installHash": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "The installation: planHash of POST /packages:apply, or installHash the installer named in POST /packages:record",
+      "title": "Installhash"
+     },
+     "installedAt": {
+      "format": "date-time",
+      "title": "Installedat",
+      "type": "string"
+     },
+     "key": {
+      "description": "Key of the package (package.yaml -> metadata key)",
+      "title": "Key",
+      "type": "string"
+     },
+     "version": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Version of the package whose installation last named the object; null for objects applied before versions were kept",
+      "title": "Version"
+     }
+    },
+    "required": [
+     "key",
+     "version",
+     "installHash",
+     "installedAt"
+    ],
+    "title": "PackageLinkOut",
+    "type": "object"
+   },
+   "ProjectTemplateCreateRequest": {
+    "additionalProperties": false,
+    "description": "Creating a version, never editing one: the server allocates `version`.",
+    "properties": {
+     "defaultConfig": {
+      "additionalProperties": true,
+      "title": "Defaultconfig",
+      "type": "object"
+     },
+     "defaultViews": {
+      "items": {},
+      "maxItems": 50,
+      "title": "Defaultviews",
+      "type": "array"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "displayName": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Displayname",
+      "type": "string"
+     },
+     "fieldSchema": {
+      "additionalProperties": true,
+      "title": "Fieldschema",
+      "type": "object"
+     },
+     "governanceSchema": {
+      "additionalProperties": true,
+      "title": "Governanceschema",
+      "type": "object"
+     },
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Key",
+      "type": "string"
+     },
+     "lifecycleSchema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lifecycleschema"
+     },
+     "memoryDefaults": {
+      "additionalProperties": true,
+      "title": "Memorydefaults",
+      "type": "object"
+     }
+    },
+    "required": [
+     "key",
+     "displayName"
+    ],
+    "title": "ProjectTemplateCreateRequest",
+    "type": "object"
+   },
+   "RoleCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "slug": {
+      "maxLength": 63,
+      "minLength": 2,
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "title": "Slug",
+      "type": "string"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "slug",
+     "name"
+    ],
+    "title": "RoleCreateRequest",
+    "type": "object"
+   },
+   "RuleCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "action": {
+      "additionalProperties": true,
+      "title": "Action",
+      "type": "object"
+     },
+     "condition": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "boolean"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Condition"
+     },
+     "description": {
+      "default": "",
+      "maxLength": 2000,
+      "title": "Description",
+      "type": "string"
+     },
+     "goalId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Goalid"
+     },
+     "identity": {
+      "anyOf": [
+       {
+        "$ref": "#/components/schemas/RuleIdentitySpec"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "interpretation": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Interpretation"
+     },
+     "key": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Key",
+      "type": "string"
+     },
+     "status": {
+      "default": "enabled",
+      "enum": [
+       "enabled",
+       "disabled"
+      ],
+      "title": "Status",
+      "type": "string"
+     },
+     "trigger": {
+      "additionalProperties": true,
+      "title": "Trigger",
+      "type": "object"
+     },
+     "workspaceId": {
+      "anyOf": [
+       {
+        "format": "uuid",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Workspaceid"
+     }
+    },
+    "required": [
+     "key",
+     "trigger",
+     "action"
+    ],
+    "title": "RuleCreateRequest",
+    "type": "object"
+   },
+   "RuleIdentitySpec": {
+    "additionalProperties": false,
+    "description": "Whose authority a rule acts with (CP-ADR-0063 amendment 2026-09-27, G1):\nan agent of the registry, by key.",
+    "properties": {
+     "agent": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9-]*$",
+      "title": "Agent",
+      "type": "string"
+     }
+    },
+    "required": [
+     "agent"
+    ],
+    "title": "RuleIdentitySpec",
+    "type": "object"
+   },
+   "SkillRegisterRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "config": {
+      "additionalProperties": true,
+      "title": "Config",
+      "type": "object"
+     },
+     "contract": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Contract"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "inputSchema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Inputschema"
+     },
+     "name": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+     },
+     "outputSchema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Outputschema"
+     },
+     "protocol": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Protocol"
+     },
+     "riskLevel": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Risklevel"
+     },
+     "sideEffects": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Sideeffects"
+     },
+     "version": {
+      "default": "1.0.0",
+      "maxLength": 50,
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+     }
+    },
+    "required": [
+     "name"
+    ],
+    "title": "SkillRegisterRequest",
+    "type": "object"
+   },
+   "TaskTypeCreateRequest": {
+    "additionalProperties": false,
+    "description": "Creating a version, never editing one: the server allocates `version`.",
+    "properties": {
+     "acceptance": {
+      "items": {
+       "$ref": "#/components/schemas/AcceptanceCheckSpec"
+      },
+      "maxItems": 50,
+      "title": "Acceptance",
+      "type": "array"
+     },
+     "approvalSchema": {
+      "additionalProperties": true,
+      "title": "Approvalschema",
+      "type": "object"
+     },
+     "artifactSchema": {
+      "additionalProperties": true,
+      "title": "Artifactschema",
+      "type": "object"
+     },
+     "completionSchema": {
+      "additionalProperties": true,
+      "title": "Completionschema",
+      "type": "object"
+     },
+     "contextSchema": {
+      "additionalProperties": true,
+      "title": "Contextschema",
+      "type": "object"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "displayName": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Displayname",
+      "type": "string"
+     },
+     "execution": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Execution"
+     },
+     "fieldSchema": {
+      "additionalProperties": true,
+      "title": "Fieldschema",
+      "type": "object"
+     },
+     "instructions": {
+      "default": "",
+      "title": "Instructions",
+      "type": "string"
+     },
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Key",
+      "type": "string"
+     },
+     "lifecycleSchema": {
+      "anyOf": [
+       {
+        "additionalProperties": true,
+        "type": "object"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Lifecycleschema"
+     }
+    },
+    "required": [
+     "key",
+     "displayName"
+    ],
+    "title": "TaskTypeCreateRequest",
+    "type": "object"
+   },
+   "WorkspaceTypeCreateRequest": {
+    "additionalProperties": false,
+    "properties": {
+     "allowedChildTypes": {
+      "anyOf": [
+       {
+        "items": {
+         "type": "string"
+        },
+        "maxItems": 100,
+        "type": "array"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "title": "Allowedchildtypes"
+     },
+     "description": {
+      "default": "",
+      "title": "Description",
+      "type": "string"
+     },
+     "displayName": {
+      "maxLength": 200,
+      "minLength": 1,
+      "title": "Displayname",
+      "type": "string"
+     },
+     "fieldSchema": {
+      "additionalProperties": true,
+      "title": "Fieldschema",
+      "type": "object"
+     },
+     "key": {
+      "maxLength": 63,
+      "minLength": 1,
+      "pattern": "^[a-z0-9][a-z0-9_-]*$",
+      "title": "Key",
+      "type": "string"
+     }
+    },
+    "required": [
+     "key",
+     "displayName"
+    ],
+    "title": "WorkspaceTypeCreateRequest",
+    "type": "object"
+   }
+  }
+ },
+ "info": {
+  "description": "Coordination backend for humans, AI agents and automated processes: tasks, sessions, atomic claims with fencing tokens, immutable domain events, transactional outbox and realtime updates.",
+  "title": "control-plane",
+  "version": "0.9.0"
+ },
+ "source": "control-plane@4421d6b"
+}

@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Истекает срок действия сущности базы знаний (TAI-ADR-0056 Р12, FR-022).
+#
+# Задачу заводит правило knowledge-expiry — одну на сущность и дату истечения
+# (дедупликация <вид>:<ключ>@<validUntil>) — роли, ответственной за вид (expiry пакета
+# онтологии), иначе владельцу базы знаний. Что сделать — продлить документ, договор или
+# поверку и загрузить новый срок (таблицей, документом или из учётной системы) либо
+# закрыть задачу, если сущность больше не нужна. Новый срок — новая работа, а не
+# повтор этой.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: knowledge-expiry
+spec:
+  displayName: Knowledge expiry
+  description: >-
+    Истекает срок действия сущности базы знаний: продлить и загрузить новый срок или
+    закрыть, если сущность больше не нужна.
+  fieldSchema:
+    type: object
+    required: [kind, key, validUntil]
+    additionalProperties: false
+    properties:
+      pack: {type: string, maxLength: 200}
+      kind: {type: string, pattern: "^[a-z][a-z0-9_]{0,63}$"}
+      key: {type: string, minLength: 1, maxLength: 512}
+      validUntil: {type: string, pattern: "^\\d{4}-\\d{2}-\\d{2}$"}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done

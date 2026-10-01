@@ -1,0 +1,200 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Сгенерировано skill-sdk из кода — правьте код и перегенерируйте (TAI-ADR-0045).
+apiVersion: taimen.ai/v1
+kind: Skill
+key: process.regulation_check
+spec:
+  version: '1'
+  description: 'Сверить изменённые регламенты с процессами, чьи элементы на них ссылаются (governedBy):
+    расхождения по элементам и задачи владельцам'
+  sideEffects: none
+  riskLevel: low
+  contract:
+    inputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - changes
+      additionalProperties: false
+      properties:
+        changes:
+          type: array
+          maxItems: 1000
+          description: changes события knowledge.changed как есть
+          items:
+            type: object
+            required:
+            - key
+            properties:
+              kind:
+                type: string
+              key:
+                type: string
+                minLength: 1
+              change:
+                enum:
+                - opened
+                - changed
+                - closed
+        workspaceId:
+          type:
+          - string
+          - 'null'
+        snapshotId:
+          type:
+          - string
+          - 'null'
+    outputs:
+      $schema: https://json-schema.org/draft/2020-12/schema
+      type: object
+      required:
+      - status
+      - checked
+      - findings
+      - tasks
+      - skipped
+      properties:
+        status:
+          enum:
+          - consistent
+          - drift
+          - not_governed
+        checked:
+          type: array
+          items:
+            type: object
+            required:
+            - process
+            - version
+            - document
+            - revision
+            - elements
+            properties:
+              process:
+                type: string
+              version:
+                type: integer
+              document:
+                type: string
+              revision:
+                type: string
+              elements:
+                type: array
+                items:
+                  type: string
+        findings:
+          type: array
+          items: &id001
+            type: object
+            required:
+            - process
+            - version
+            - element
+            - document
+            - section
+            - revision
+            - finding
+            - suggestion
+            properties:
+              process:
+                type: string
+              version:
+                type: integer
+              element:
+                type: string
+              elementKind:
+                type: string
+              document:
+                type: string
+              section:
+                type:
+                - string
+                - 'null'
+              revision:
+                type: string
+              finding:
+                type: string
+              suggestion:
+                type: string
+        tasks:
+          type: array
+          maxItems: 50
+          items:
+            type: object
+            required:
+            - dedupKey
+            - process
+            - version
+            - document
+            - revision
+            - workspaceId
+            - assignee
+            - title
+            - description
+            - elements
+            - sections
+            - findings
+            properties:
+              dedupKey:
+                type: string
+                maxLength: 200
+              process:
+                type: string
+              version:
+                type: integer
+              document:
+                type: string
+              revision:
+                type: string
+              workspaceId:
+                type:
+                - string
+                - 'null'
+              assignee:
+                type: string
+                description: id principal, agent:<key> или role:<slug>
+              ownerSource:
+                enum:
+                - owner
+                - publisher
+              title:
+                type: string
+              description:
+                type: string
+              elements:
+                type: array
+                items:
+                  type: string
+              sections:
+                type: array
+                items:
+                  type: string
+              findings:
+                type: array
+                items: *id001
+        skipped:
+          type: array
+          items:
+            type: object
+            required:
+            - document
+            - reason
+            properties:
+              document:
+                type: string
+              process:
+                type: string
+              section:
+                type:
+                - string
+                - 'null'
+              reason:
+                type: string
+    idempotency: natural
+    timeoutSeconds: 600
+    retryPolicy:
+      maxAttempts: 2
+      backoffSeconds: 60
+    implementation:
+      protocol: local
+      entrypoint: taimen_process_knowledge.regulation_check:invoke

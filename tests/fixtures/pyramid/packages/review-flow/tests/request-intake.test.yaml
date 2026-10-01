@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+process: request-intake
+name: a submitted request is closed after its approval
+given:
+  principals: {reviewer: [alice]}
+mocks:
+  skills:
+    request.classify@1:
+      - output: {category: question}
+steps:
+  - emit:
+      observation: request.submitted
+      payload: {id: R-1}
+  - expect:
+      stages: {review: open}
+      tasks: [{step: approve-request}]
+  - complete: {step: approve-request, by: alice, output: {decision: approved}}
+  - expect: {status: completed, outcome: reviewed, noSideEffects: true}

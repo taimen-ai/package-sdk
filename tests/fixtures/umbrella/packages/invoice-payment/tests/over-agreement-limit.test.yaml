@@ -1,0 +1,44 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# База знаний (TAI-ADR-0056 Р15, SC-008): договор с контрагентом действует, но сумма
+# счёта выше его лимита — согласует финансовый директор, источник — договор; проверку
+# ведёт роль подразделения, которое ведёт контрагента (serves), а не бухгалтерия.
+process: invoice-payment
+name: сумма выше лимита договора — финансовый директор; проверка — роль подразделения
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals:
+    accounting: [1a000000-0000-4000-8000-000000000001, 1a000000-0000-4000-8000-000000000002]
+    finance-director: [1f000000-0000-4000-8000-000000000001]
+    sales-manager: [1b000000-0000-4000-8000-000000000001]
+mocks:
+  recall:
+    - step: recall-counterparty
+      output:
+        nodes:
+          - {kind: legal_entity, key: "7701234567", anchor: true, title: "ООО «Поставщик»"}
+          - {kind: agreement, key: "agreement:1c:D-7", title: Сопровождение, attributes: {number: "Д-7", subject: Сопровождение, limitAmount: 50000, validFrom: "2026-01-01", validUntil: "2026-12-31"}}
+          - {kind: org_unit, key: "unit:1c:SALES", title: Отдел продаж}
+          - {kind: role, key: "role:sales-manager", title: Менеджер отдела, attributes: {platformRole: sales-manager}}
+        edges:
+          - {relation: party_to, from: "7701234567", to: "agreement:1c:D-7"}
+          - {relation: serves, from: "unit:1c:SALES", to: "7701234567"}
+          - {relation: belongs_to, from: "role:sales-manager", to: "unit:1c:SALES"}
+  skills:
+    notify.send@1:
+      - output: {notificationId: 0e000000-0000-4000-8000-000000000001, deliveries: [{channel: telegram, status: pending}]}
+steps:
+  - emit:
+      observation: invoice.received
+      payload:
+        data: {invoice: "СЧ-2026-301", supplier: "ООО «Поставщик»", supplierInn: "7701234567",
+               amount: 80000, currency: RUB, date: "2026-09-30", uploadedBy: 1a000000-0000-4000-8000-000000000001}
+  - expect:
+      data: {hasAgreement: true, agreementKey: "agreement:1c:D-7", withinLimit: false, reviewRole: sales-manager}
+      memory: {recalled: [recall-counterparty]}
+      tasks: [{step: check-invoice, assignee: "role:sales-manager"}]
+  - complete: {step: check-invoice, by: 1b000000-0000-4000-8000-000000000001, output: {verdict: ok}}
+  # 80 000 ₽ — ниже порога бухгалтерии, но выше лимита договора
+  - expect: {data: {approverRole: finance-director, routeNote: "Сумма выше лимита договора"}}
+  - approve: {step: approve-payment, by: 1f000000-0000-4000-8000-000000000001, decision: approve}
+  - complete: {step: pay, by: 1a000000-0000-4000-8000-000000000002, output: {paidOn: "2026-10-02", reference: "ПП-777"}}
+  - expect: {status: completed, outcome: paid}

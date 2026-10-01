@@ -1,0 +1,5 @@
+subject: rule
+name: missing rule key
+given: {observation: {kind: x.y}}
+steps:
+  - expect: {result: matched}

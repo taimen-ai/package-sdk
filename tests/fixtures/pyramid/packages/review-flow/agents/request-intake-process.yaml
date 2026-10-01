@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Agent
+key: request-intake-process
+spec:
+  displayName: Request intake process
+  identity:
+    kind: service
+    permissions: [tasks.write]
+  placement: none

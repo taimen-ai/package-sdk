@@ -1,0 +1,50 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# База знаний компании (фича company-knowledge, TAI-ADR-0056). 0.1.0 — загрузка
+# таблицы (K018): тип задачи knowledge-import с воротами решения, типы артефактов
+# файла и плана, роль владельца базы знаний, скиллы knowledge.template@1,
+# knowledge.import_plan@1 и knowledge.import_apply@1 (код — integrations/company_knowledge,
+# `skill-sdk export --package packages/company-knowledge taimen_company_knowledge.template_skill
+# taimen_company_knowledge.import_skills`).
+#
+# 0.2.0 — документы (K019): тип задачи knowledge-document (поля документа предлагает
+# ИИ с цитатами, человек правит и подтверждает), скиллы knowledge.document_extract@1 и
+# knowledge.document_apply@1, команда `taimen-company-knowledge-document`.
+#
+# 0.3.0 — коннектор 1С (K020): агент onec-connector (observer, код integrations/onec,
+# узел onec-access, секрет onec-credentials); переменная установки KNOWLEDGE_WORKSPACE_ID.
+#
+# 0.4.0 — истечение сроков (K021, Р12): правило knowledge-expiry раз в сутки зовёт
+# knowledge.expiring@1 (виды со сроком всех пакетов из входа правила, окно — expiry
+# пакета онтологии) и заводит задачу knowledge-expiry роли, ответственной за вид, по
+# ключу <вид>:<ключ>@<validUntil>. Правило действует личностью knowledge-rules
+# (placement: none): установка заводит её IAM service account и PUT /agents/{key}/identity.
+# 0.4.1 (K028): поле definitions у knowledge-import и knowledge-document — описание пакета
+# арендатора едет с задачей в план, извлечение и применение по решению.
+# 0.4.2 (TASK-001190): поле stateToken задачи knowledge-import переименовано в stateRef —
+# ключ customFields со словом token ядро отвергает как секрет (secret_material_rejected),
+# и план не записывался в задачу. Открытые задачи прежней версии типа — :migrate-tasks.
+#
+# Поток загрузки (Р3) — из примитивов ядра, без нового сервиса: задача knowledge-import
+# с файлом → план скиллом (без записи) → approval → применение с expectedState. Его
+# проходят консоль, агент в Claude Code и команда `taimen-company-knowledge-import`.
+#
+# Нужно установке: онтология company@1 зарегистрирована и включена для дерева
+# workspace (taimen-company-knowledge-pack); хостинг local-скиллов с пакетом
+# taimen_company_knowledge, skill-sdk с ctx.artifacts/ctx.knowledge (K013) и правами
+# исполнителя artifacts.read на workspace базы знаний и observations.write.
+apiVersion: taimen.ai/v1
+kind: Package
+key: company-knowledge
+spec:
+  version: 0.4.2
+  displayName: Company knowledge
+  description: >-
+    База знаний компании: загрузка таблиц по шаблону вида любого пакета онтологии —
+    проверка, план изменений без записи, решение человека и применение ровно
+    показанного плана; документы — текст в базу знаний, поля сущности с цитатами на
+    подтверждение человеку; задача ответственному об истечении срока любой сущности
+    со сроком действия.
+  variables:
+    KNOWLEDGE_WORKSPACE_ID:
+      kind: workspace
+      description: Workspace базы знаний — задачи загрузки, документы и напоминания о сроках; namespace памяти — корень его дерева

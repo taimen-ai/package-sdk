@@ -1,0 +1,68 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Неготовность устраняется (сценарий 7): декларации не подтверждены — проверка
+# готовности не проходит, задача «подать» не появляется, руководителю — задача
+# исправить с перечнем непройденных проверок; после исправления проверка повторяется
+# и появляется задача подать. Заявку не подали: эскалации, затем граничный таймер
+# окончания подачи прерывает стадию — исход missed-deadline.
+process: tender
+name: неготовность исправлена, но подача пропущена
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000019"
+          purchase:
+            number: "0000000000026000019"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Разработка ИС
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "2000000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: да}}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: false}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 1900000, rationale: расчёт}}
+  - approve: {step: approve-price, by: bob, decision: approve}
+  - complete: {step: prepare-documents, by: alice, output: {documents: [предложение], declarationsConfirmed: false}}
+  - expect:
+      stages: {preparation: open}
+      data: {application.ready: false, application.checks.documents: false, application.checks.approval: true}
+      tasks: [{step: fix-readiness, assignee: alice, status: open}]
+  - complete: {step: fix-readiness, by: alice, output: {declarationsConfirmed: true}}
+  - expect:
+      stages: {preparation: completed, submission: open}
+      data: {application.ready: true}
+      tasks: [{step: submit, status: open}]
+  - advance: until:submit
+  - advance: until:submit
+  - expect: {events: [process.escalated, process.escalated]}
+  - advance: until:submission-deadline
+  - expect: {status: completed, outcome: missed-deadline, tasks: [{step: submit, status: cancelled}]}

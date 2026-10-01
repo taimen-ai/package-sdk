@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Тип задачи процесса tender — шаг prepare-documents (стадия preparation). Форма: fieldSchema (данные задачи, по ним
+# ядро проверяет завершение и типизирует step.result); представление (uischema) —
+# у шага процесса (processForm), схема каталога у типа задачи его не держит.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: tender-application
+spec:
+  displayName: Подготовить заявку
+  description: >-
+    Комплект документов заявки и декларации участника.
+  fieldSchema:
+    type: object
+    required: [documents, declarationsConfirmed]
+    properties:
+      documents: {type: array, maxItems: 100, items: {type: string, maxLength: 300}, description: Документы заявки (имена или id артефактов)}
+      declarationsConfirmed: {type: boolean, description: Декларации участника проверены}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Соберите документы заявки по требованиям извещения и проверьте декларации. Готовность к подаче проверяется детерминированно: документы есть, декларации подтверждены, цена согласована, обеспечение внесено (если требуется), срок не прошёл.

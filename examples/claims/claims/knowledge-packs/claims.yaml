@@ -1,0 +1,31 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# The ontology of the package: a claim and how it links to what the knowledge base
+# already knows. The customer (an organization), the product and the decision are
+# kinds of the platform ontology default@1 — this ontology adds only the claim and its
+# relations and does not redeclare them.
+apiVersion: taimen.ai/v1
+kind: KnowledgePack
+key: claims
+spec:
+  name: claims
+  version: 1
+  description: Claims of customers about products and how they were resolved
+  extends: ["default@1"]
+  kinds:
+    - kind: claim
+      title: Claim
+      description: A claim of a customer about a product, one per helpdesk ticket
+      naturalKey: "claim:<ticketId>"
+      attributes:
+        type: object
+        properties:
+          subject: {type: string, maxLength: 300, title: Subject}
+          category: {type: string, enum: [defect, delivery, billing, other], title: Category}
+          severity: {type: string, enum: [low, medium, high], title: Severity}
+          resolution: {type: string, enum: [refund, replacement, rejection], title: Resolution}
+          refundAmount: {type: number, minimum: 0, title: Refund}
+      searchable: {fields: [subject]}
+  relations:
+    - {relation: filed_by, title: Filed by, fromKinds: [claim], toKinds: [legal_entity], cardinality: one}
+    - {relation: concerns, title: Concerns, fromKinds: [claim], toKinds: [product]}
+    - {relation: resolved_by, title: Resolved by, fromKinds: [claim], toKinds: [decision], cardinality: one}

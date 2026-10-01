@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Рабочие часы 09:00–18:00 по Москве; предпраздничный день короче на час.
+apiVersion: taimen.ai/v1
+kind: Calendar
+key: office
+spec:
+  displayName: Office calendar
+  timezone: Europe/Moscow
+  weekend: [6, 7]
+  workingHours:
+    intervals: [{from: "09:00", to: "18:00"}]
+    shortDayReduction: PT1H
+  years:
+    - year: 2026
+      holidays: ["2026-11-04"]
+      workdays: []
+      shortDays: ["2026-11-03"]

@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../../schema/v1/test.schema.json
+subject: rule
+rule: claim-reopened
+name: a reopened internal ticket is not a claim
+given:
+  observation:
+    kind: helpdesk.ticket_reopened
+    data: {ticketId: T-2001, version: 2, channel: internal, subject: Printer, text: Out of toner.}
+steps:
+  - expect:
+      result: not_matched
+      invokeSkill: []
+      ensureWork: []

@@ -1,0 +1,7 @@
+{
+  "name": "package-author",
+  "version": "0.1.0",
+  "description": "Package author for catalog packages: task types, rules, processes, agents, integrations, ontologies, notifications, tests and installation — checks, tests and plans by package-sdk, applying only after a human yes to the shown plan",
+  "keywords": ["packages", "processes", "rules", "agents", "integrations", "mcp"],
+  "license": "Apache-2.0"
+}

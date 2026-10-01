@@ -1,0 +1,93 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Подтверждение уроков закрытого дела (TAI-ADR-0054 Р18, CP-ADR-0076 §8, FR-056).
+# Задачу заводит шаг retrospective процесса (`retrospective.taskType`) с уроками,
+# которые предложил process.retrospective@1: поле lessons — форма по урокам. Человек по
+# каждому уроку выбирает decision: confirm (как есть), edit (с текстом editedText) или
+# reject. Подтверждённые (confirm и edit) процесс пишет в память шагом remember узлами
+# lesson со связями learned_from (дело) и applies_to (сущности appliesTo — объекты
+# {kind, key}: по ним ядро пишет связи, 0.2.0); урок без решения —
+# не подтверждён и в память не попадает (ст. IV: ИИ предлагает, решает человек).
+#
+# Форма — fieldSchema: схема каталога отдельной формы у типа задачи не знает, форма
+# шага процесса (processForm) задаётся в самом процессе. decision в схеме
+# необязателен: задача создаётся с предложенными уроками без решений, а «каждый урок
+# решён» к завершению fieldSchema не выражает — поэтому нерешённый урок считается
+# отклонённым.
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: lessons-review
+spec:
+  displayName: Подтвердить уроки дела
+  description: >-
+    Агент разобрал закрытое дело и предложил уроки со ссылками на записи журнала.
+    По каждому уроку — подтвердить, поправить или отклонить; в базу знаний попадают
+    только подтверждённые, связанными с делом и сущностями, к которым относятся.
+  fieldSchema:
+    type: object
+    required: [case, lessons]
+    properties:
+      case: {type: string, minLength: 1, maxLength: 300, description: Естественный ключ дела}
+      process: {type: string, maxLength: 63, description: Ключ процесса дела}
+      outcome: {type: string, maxLength: 200, description: Исход дела}
+      lessons:
+        type: array
+        maxItems: 10
+        description: Предложенные уроки и решения по ним
+        items:
+          type: object
+          required: [key, text, appliesTo, evidence]
+          properties:
+            key: {type: string, maxLength: 400, description: "Ключ урока lesson:<дело>/<id>"}
+            text: {type: string, minLength: 1, maxLength: 2000, description: Предложенный урок}
+            appliesTo:
+              type: array
+              minItems: 1
+              maxItems: 20
+              items:
+                type: object
+                required: [kind, key]
+                properties:
+                  kind: {type: string, minLength: 1, maxLength: 63, description: Вид сущности памяти}
+                  key: {type: string, minLength: 1, maxLength: 300, description: Естественный ключ сущности}
+              description: "Сущности, к которым относится урок: {kind, key}"
+            evidence:
+              type: array
+              minItems: 1
+              maxItems: 50
+              description: Записи журнала дела, на которых урок основан
+              items:
+                type: object
+                required: [seq]
+                properties:
+                  seq: {type: integer, minimum: 0}
+                  eventId: {type: [string, "null"]}
+            decision:
+              enum: [confirm, edit, reject]
+              description: Решение человека; без решения урок не подтверждён
+            editedText: {type: string, maxLength: 2000, description: Исправленный текст (decision edit)}
+            comment: {type: string, maxLength: 2000}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: in_progress, category: active, displayName: In progress}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [in_progress, done, cancelled]}
+      - {from: in_progress, to: [todo, done, cancelled]}
+    initialStatus: todo
+    claimStatus: in_progress
+    releaseStatus: todo
+    completionStatus: done
+  approvalSchema: {}
+  instructions: |
+    Агент разобрал закрытое дело и предложил уроки. По каждому уроку в поле `lessons`:
+
+    - `decision: confirm` — урок верен, записать как есть;
+    - `decision: edit` и `editedText` — урок верен по сути, но формулировку надо
+      поправить;
+    - `decision: reject` — урок неверен или бесполезен (причину — в `comment`).
+
+    Сверяйте урок с записями журнала из `evidence`: урок без опоры на факты дела
+    отклоняйте. Урок без решения считается отклонённым. Подтверждённые уроки попадут в
+    базу знаний и будут показаны в контексте похожих дел с указанием этого дела.

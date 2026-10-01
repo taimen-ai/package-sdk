@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Уведомления как действие пакета (TAI-ADR-0048 п.6): любой тип задачи или правило
+# шлёт уведомление principal'у, роли в workspace или группе скиллом notify.send@1.
+# Сам сервис — notification-service. Какие события ядра становятся уведомлениями,
+# решают правила notification-rules/ (TAI-ADR-0053 п.4, ADR-0005 сервиса): их
+# применяет установщик к сервису, а не к ядру; без них сервис событий не читает.
+# 0.2.0 — три правила прежнего встроенного поведения (запрос решения с кнопками,
+# провал проверки приёмки: задача вернулась в работу / ждёт человека).
+apiVersion: taimen.ai/v1
+kind: Package
+key: notify
+spec:
+  version: 0.2.0
+  displayName: Notifications
+  description: >-
+    Скилл notify.send@1 — отправка уведомления из исходов approval, правил и
+    шагов процессов любого домена через notification-service; правила
+    уведомлений о событиях ядра (запрос решения, провал проверки приёмки).
+  requires: []
+  variables:
+    NOTIFICATION_SERVICE_URL:
+      kind: url
+      description: Адрес сервиса уведомлений для http-скилла notify.send@1
+      example: https://cp.example.com/notify
+    TASK_URL_BASE:
+      kind: url
+      description: База ссылки «Открыть задачу» в уведомлениях — к ней дописывается /<publicId>
+      example: https://cp.example.com/ru/control-plane/tasks

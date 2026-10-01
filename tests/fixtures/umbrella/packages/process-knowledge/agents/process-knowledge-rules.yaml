@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Личность правил пакета process-knowledge (TAI-ADR-0053 п.5, CP-ADR-0063 Г1):
+# правило regulation-drift действует полномочиями этого principal'а — он автор
+# задач о расхождении процесса с регламентом. Процесса нет.
+#
+# Права — ровно то, что проверяют действия regulation-drift:
+# - events.read — чтение события-триггера knowledge.changed;
+# - skills.invoke — интерпретация изменения скиллом process.regulation_check@1;
+# - tasks.read — поиск открытой работы по ключу дедупликации;
+# - tasks.write — ensure_work задачи process-regulation-drift.
+# Процессы по регламенту читает исполнитель скилла своим credential (processes.read),
+# а не правило. Связку заводит установка (IAM-principal по identity.iam и PUT
+# /agents/{key}/identity); пока её нет, оценка — failed: credential_inactive.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: process-knowledge-rules
+spec:
+  displayName: Process knowledge rules
+  description: Личность правил вывода работы пакета process-knowledge
+  identity:
+    kind: service
+    permissions:
+    - events.read
+    - skills.invoke
+    - tasks.read
+    - tasks.write
+    iam:
+      audiences:
+      - control-plane
+      scopeCeiling:
+      - control-plane:read
+      - control-plane:write
+  placement: none

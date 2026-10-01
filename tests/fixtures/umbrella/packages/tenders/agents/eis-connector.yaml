@@ -1,0 +1,67 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Источник наблюдений ЕИС (FR-036–FR-041, TAI-ADR-0036 «коннектор = наблюдатель +
+# скиллы»): агент описанием (TAI-ADR-0052) с видом исполнителя observer. Узел fleet
+# запускает образ вида (integrations/eis/Dockerfile), процесс читает свою ревизию
+# (GET /agents/me) и исполняет наблюдатель executor.params.entrypoint —
+# eis.rss_watch и eis.purchase_sync из integrations/eis. Новая ревизия — выход 75 и
+# перезапуск на ней.
+#
+# Наблюдения procurement.* (и служебные procurement.skipped, eis.token_rejected,
+# eis.token_missing) идут в work.workspace (POST /observations), файлы документов —
+# артефакты-ссылки procurement-document там же (POST /artifacts).
+#
+# Фильтры первой установки — данные (FR-039, решение владельца): 44-ФЗ, ОКПД2 62.* и
+# 63.*, все регионы, НМЦК от 1 млн ₽. Разбирает их EisConfig интеграции.
+#
+# Токен ЕИС — только секрет узла eis-token (FR-041): значения здесь нет и быть не
+# может (схема запрещает ключи *token/*secret/*password в config, EisConfig — тоже).
+# Файл перечитывается каждый цикл; пустой файл — токена нет: агент не падает, не
+# опрашивает ЕИС и раз в сутки пишет eis.token_missing.
+#
+# Размещение — узел с меткой eis-access: российский IP, с которого открываются
+# int.zakupki.gov.ru и zakupki.gov.ru (со staging Beget/СПб 2026-09-27 — таймаут).
+# Такого узла пока нет — state: stopped; порядок запуска — deploy/fleet/eis/README.md.
+apiVersion: taimen.ai/v1
+kind: Agent
+key: eis-connector
+spec:
+  displayName: EIS connector
+  description: Наблюдения за закупками 44-ФЗ в ЕИС (zakupki.gov.ru) для процесса тендеров
+  identity:
+    kind: agent
+    permissions:
+    - artifacts.write
+    - observations.write
+  work:
+    workspace: ${TENDERS_WORKSPACE_ID}
+  executor:
+    kind: observer
+    params:
+      entrypoint: taimen_eis.agent:observe
+      intervalSeconds: 900
+      config:
+        filters:
+          laws: [44-FZ]
+          okpd2: ["62.*", "63.*"]
+          regions: all
+          minPrice: 1000000
+        rss:
+          enabled: true
+        catchup:
+          enabled: true
+          days: 7
+        sync:
+          subsystems: [PRIZ]
+          maxPurchasesPerCycle: 50
+          followDays: 180
+        attachments: content
+        caFile: /etc/ssl/eis/ca.pem
+  placement:
+    requires:
+    - eis-access
+    secrets:
+    - eis-token
+    resources:
+      cpus: 1
+      memoryMb: 256
+  state: stopped

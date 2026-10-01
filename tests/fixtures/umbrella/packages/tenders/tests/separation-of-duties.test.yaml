@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Разделение обязанностей на согласовании цены (сценарий 6, приёмка 3): расчёт
+# готовила alice; она в роли согласующих (tender-lead, порог НМЦК до 3 млн), но ядро
+# отказывает её голосу. bob отклоняет — расчёт возвращается на доработку (retry), его
+# делает уже bob, и теперь bob не может голосовать, а alice — может.
+process: tender
+name: автор расчёта не согласует свою цену; отказ возвращает расчёт
+given:
+  clock: "2026-10-01T09:00:00+03:00"
+  principals: {tender-lead: [alice, bob], tender-lawyer: [lena], tender-finance: [fin], general-director: [gd]}
+mocks:
+  recall:
+    - {step: recall-company, output: {nodes: [{kind: legal_entity, key: "7707083893", anchor: true, attributes: {own: true, smallBusiness: true}}], edges: []}}
+    - {step: recall-roles, output: {nodes: [], edges: []}}
+    - {step: recall-offerings, output: {nodes: [], edges: []}}
+    - {output: {nodes: []}}
+  skills:
+    tender.match_items@1:
+      - output: {status: ok, items: [], coverage: {count: 0, total: 0, sumShare: "0"}, executor: {}, aiPending: false, summary: позиций нет}
+    tender.check_requirements@1:
+      - output: {status: ok, checks: [], blockers: [], warnings: [], aiPending: false, summary: требований нет}
+    tender.analyze_docs@2:
+      - output:
+          status: ok
+          summary: ok
+          risks: []
+          blockers: []
+          questions: []
+          recommendation: {decision: go, rationale: блокеров нет}
+steps:
+  - emit:
+      observation: procurement.notice_published
+      source: eis
+      payload:
+        kind: procurement.notice_published
+        data:
+          kind: notice_published
+          purchaseNumber: "0000000000026000011"
+          purchase:
+            number: "0000000000026000011"
+            law: 44-FZ
+            method: {code: EAP20, name: Электронный аукцион}
+            customer: {name: ГБУ «Тестовый ЦИ», inn: "7700000001"}
+            object: Доработка ИС
+            okpd2: ["62.01.11.000"]
+            maxPrice: {amount: "2000000.00", currency: RUB}
+            deadlines: {submissionEnd: "2026-10-19T09:00:00+03:00"}
+  - complete: {step: go-no-go, by: alice, output: {decision: go, reason: да}}
+  - complete: {step: legal-review, by: lena, output: {questionsNeeded: false}}
+  - complete: {step: calculate-price, by: alice, output: {amount: 1900000, rationale: первый расчёт}}
+  - expect: {data: {approval.level: lead, price.preparedBy: alice}}
+  - approve: {step: approve-price, by: alice, decision: approve, expectRefused: separation_of_duties_violation}
+  - approve: {step: approve-price, by: fin, decision: approve, expectRefused: not_eligible}
+  - approve: {step: approve-price, by: bob, decision: reject}
+  # отказ — ошибка price-rejected, повтор блока: новый расчёт
+  - expect:
+      data: {priceApproval.outcome: rejected, priceApproval.rejectedBy: [bob]}
+      tasks: [{step: calculate-price, status: open}]
+  - complete: {step: calculate-price, by: bob, output: {amount: 1750000, rationale: второй расчёт}}
+  - expect: {data: {price.preparedBy: bob}}
+  - approve: {step: approve-price, by: bob, decision: approve, expectRefused: separation_of_duties_violation}
+  - approve: {step: approve-price, by: alice, decision: approve}
+  - expect:
+      stages: {pricing: completed, preparation: open}
+      data: {priceApproval.outcome: approved, priceApproval.approvedBy: [alice], price.amount: 1750000}

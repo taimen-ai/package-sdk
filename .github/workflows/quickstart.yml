@@ -1,0 +1,91 @@
+name: quickstart
+
+# SC-001: страница «Пакет за 10 минут» руководства исполняется как есть на чистом
+# runner без стенда и укладывается в 10 минут (ci/quickstart.py, S032). Страница
+# берётся из суперпроекта на ревизии, закреплённой в ci/quickstart-pin.json; шаг
+# «pin» падает, если команды или файлы страницы на голове ветки суперпроекта
+# разошлись с закреплёнными, — поэтому job идёт и по расписанию: правка руководства
+# без правки SDK ломает его, даже когда в SDK ничего не пушили.
+#
+# Соседи — как в ci.yml: control-plane (та же vars.CONTROL_PLANE_REF, по умолчанию `main`)
+# и platform-auth-sdk рядом (плоская раскладка). Запасные адреса — публичного зеркала:
+# <owner>/control-plane, <owner>/platform-auth-sdk и зонтик <owner>/taimen; форк с другими
+# именами репозиториев задаёт переменные *_REPO. Страница клонирует соседей из локальных
+# зеркал, а не из опубликованного выпуска. Ключи деплоя не остаются в .git/config после
+# checkout (persist-credentials: false).
+#
+# Публичный зонтик — проекция снимков со своей историей: закреплённого коммита в нём нет,
+# и страница сверяется по содержимому (план на голове ветки = закреплённый). Пока
+# страницы в зонтике нет, шаг `page` печатает page=missing и job завершается успешно с
+# пояснением (notice), остальные шаги пропускаются.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "17 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quickstart:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: package-sdk
+          persist-credentials: false
+      - id: pin
+        run: python3 package-sdk/ci/quickstart.py pin show >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ vars.SUPERPROJECT_REPO || format('{0}/taimen', github.repository_owner) }}
+          ref: ${{ steps.pin.outputs.ref }}
+          ssh-key: ${{ secrets.SUPERPROJECT_DEPLOY_KEY }}
+          persist-credentials: false
+          fetch-depth: 0
+          path: superproject
+      - id: page
+        run: python3 package-sdk/ci/quickstart.py pin status --superproject superproject >> "$GITHUB_OUTPUT"
+      - name: page not published
+        if: steps.page.outputs.page == 'missing'
+        env:
+          PAGE: ${{ steps.page.outputs.path }}
+        run: >-
+          echo "::notice title=quickstart::страница $PAGE ещё не опубликована в зонтике —
+          проверка быстрого старта пропущена"
+      - uses: actions/checkout@v4
+        if: steps.page.outputs.page == 'present'
+        with:
+          repository: ${{ vars.CONTROL_PLANE_REPO || format('{0}/control-plane', github.repository_owner) }}
+          ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
+          ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
+          persist-credentials: false
+          path: control-plane
+      - uses: actions/checkout@v4
+        if: steps.page.outputs.page == 'present'
+        with:
+          repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
+          ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
+          persist-credentials: false
+          path: platform-auth-sdk
+      # Без кэша: страница ставит инструмент с нуля, как у читателя.
+      - uses: astral-sh/setup-uv@v4
+        if: steps.page.outputs.page == 'present'
+        with:
+          enable-cache: false
+      - name: pin
+        if: steps.page.outputs.page == 'present'
+        run: python3 package-sdk/ci/quickstart.py pin check --superproject superproject
+      - name: quickstart
+        if: steps.page.outputs.page == 'present'
+        run: >-
+          python3 package-sdk/ci/quickstart.py run --superproject superproject
+          --neighbours . --db docker --timeout 600

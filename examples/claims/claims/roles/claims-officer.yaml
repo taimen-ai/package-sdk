@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=../../../../schema/v1/object.schema.json
+# Reviews claims and writes the replies; gets the follow-ups of reopened tickets.
+apiVersion: taimen.ai/v1
+kind: Role
+key: claims-officer
+spec:
+  name: Claims officer
+  description: Reviews customer claims, decides on the resolution and writes the reply

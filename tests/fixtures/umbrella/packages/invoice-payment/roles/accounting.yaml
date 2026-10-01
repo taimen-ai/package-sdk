@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Проверяет счёт, согласует оплату до порога (таблица approval-route процесса
+# invoice-payment), проводит оплату. Уведомление о согласовании адресуется роли по id
+# ${ACCOUNTING_ROLE_ID}; группа Telegram, привязанная к роли в workspace, получает его.
+apiVersion: taimen.ai/v1
+kind: Role
+key: accounting
+spec:
+  name: Бухгалтерия
+  description: Проверяет счета, согласует оплату до порога и проводит её
