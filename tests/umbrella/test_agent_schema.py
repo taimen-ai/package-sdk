@@ -141,3 +141,49 @@ def test_topology_is_a_variable_or_uuid_and_secrets_are_names():
     wrong["spec"]["placement"]["secrets"] = ["sk-ant-Very_Secret"]
     found = errors(wrong)
     assert any("workspace" in e for e in found) and any("secrets" in e for e in found)
+
+
+@pytest.mark.parametrize("catalog", [False, True], ids=["single", "catalog"])
+def test_checks_before_hand_in_is_a_boolean_switch_of_the_working_copy(catalog):
+    agent = copy.deepcopy(CODER)
+    if catalog:
+        agent["spec"]["workingCopy"] = {
+            "repositoryField": "repositoryKey",
+            "repositories": {"control-plane": {"url": "https://git.example/org/control-plane.git"}},
+        }
+    agent["spec"]["workingCopy"]["checks"] = True
+    assert errors(agent) == []
+    agent["spec"]["workingCopy"]["checks"] = "yes"
+    assert any("checks" in e for e in errors(agent))
+
+
+def test_scope_ceiling_takes_dotted_segments_like_the_core():
+    agent = copy.deepcopy(SERVICE)
+    agent["spec"]["identity"]["iam"]["scopeCeiling"] = ["control-plane:read", "iam:identities.link"]
+    assert errors(agent) == []
+    agent["spec"]["identity"]["iam"]["scopeCeiling"] = ["iam:.link"]
+    assert any("scopeCeiling" in e for e in errors(agent))
+
+
+@pytest.mark.parametrize("cpus", [1, 2, 64])
+def test_whole_cpus_are_valid(cpus):
+    agent = copy.deepcopy(CODER)
+    agent["spec"]["placement"]["resources"]["cpus"] = cpus
+    assert errors(agent) == []
+
+
+@pytest.mark.parametrize("cpus", [0.5, 1.5, 0, -1, 65, "2"])
+def test_fractional_or_out_of_range_cpus_is_a_finding_with_its_path(cpus):
+    # ядро считает канонический хэш ревизии и отвергает дробное (422 non_canonical_value)
+    agent = copy.deepcopy(CODER)
+    agent["spec"]["placement"]["resources"]["cpus"] = cpus
+    found = errors(agent)
+    assert found and all(e.startswith("spec/placement/resources/cpus: ") for e in found), found
+
+
+@pytest.mark.parametrize("placement", ["node", "", 5, [], None])
+def test_placement_is_none_or_an_object(placement):
+    agent = copy.deepcopy(CODER)
+    agent["spec"]["placement"] = placement
+    found = errors(agent)
+    assert found and all(e.startswith("spec/placement: ") for e in found), found

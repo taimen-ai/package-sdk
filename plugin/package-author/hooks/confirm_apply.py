@@ -1,23 +1,25 @@
 #!/usr/bin/env python3
-"""PreToolUse-хук плагина package-author: применение плана — только с согласия человека.
+"""PreToolUse hook of the package-author plugin: a plan is applied only with human consent.
 
-Перед вызовом ``pkg_apply`` (MCP-сервер ``package-sdk mcp``) хук
+Before a ``pkg_apply`` call (MCP server ``package-sdk mcp``) the hook
 
-- отклоняет вызов (``deny``), если в нём нет ``plan_hash`` вида ``sha256:<64 hex>``:
-  план применяется только по хэшу, который видел человек;
-- отклоняет вызов, если ``plan_file`` — не абсолютный путь, не читается как план или
-  несёт другой ``planHash``: человек подтверждает только план, который хук смог показать;
-- иначе требует подтверждения хоста (``ask``): человек видит файл плана, стенд, хэш,
-  число изменений по секциям и флаг ``overwriteConsole`` — перезапишет ли применение правки,
-  которые люди сделали в консоли, и в каких объектах, — и сам решает, применять ли.
+- denies the call (``deny``) if it carries no ``plan_hash`` of the form ``sha256:<64 hex>``:
+  a plan is applied only by the hash the human has seen;
+- denies the call if ``plan_file`` is not an absolute path, does not read as a plan or
+  carries another ``planHash``: the human confirms only a plan the hook was able to show;
+- otherwise asks the host for confirmation (``ask``): the human sees the plan file, the
+  server, the hash, the number of changes per section and the ``overwriteConsole`` flag —
+  whether applying overwrites edits people made in the console, and in which objects — and
+  decides whether to apply.
 
-Хук — второй рубеж. Первый — правило скиллов: агент не зовёт ``pkg_apply``, пока человек
-не ответил «да» на показанный план. Третий — сам SDK: он читает план один раз, применяет
-только документ с подтверждённым хэшем (``plan_hash_mismatch`` иначе) и отказывает
-``plan_stale`` до первой записи, если стенд изменился после плана.
+The hook is the second line of defence. The first is the skills' rule: the agent does not
+call ``pkg_apply`` until the human has answered "yes" to the plan shown. The third is the SDK
+itself: it reads the plan once, applies only the document with the confirmed hash
+(``plan_hash_mismatch`` otherwise) and refuses with ``plan_stale`` before the first write if
+the server changed after the plan.
 
-Вход — JSON события PreToolUse на stdin, выход — решение в ``hookSpecificOutput``.
-Для любого другого инструмента хук молчит. Зависимостей, кроме стандартной библиотеки, нет.
+Input is the PreToolUse event JSON on stdin, output is the decision in ``hookSpecificOutput``.
+For any other tool the hook stays silent. No dependencies beyond the standard library.
 """
 
 from __future__ import annotations
@@ -32,16 +34,16 @@ TOOL = re.compile(r"(^|__)pkg_apply$")
 PLAN_HASH = re.compile(r"sha256:[0-9a-f]{64}")
 PLAN_FORMAT = "package-sdk.plan/v1"
 TITLES = {
-    "catalog": "каталог",
-    "core": "ядро",
-    "knowledge": "онтологии",
-    "notification-rules": "уведомления",
-    "retire": "вывод из оборота",
+    "catalog": "catalog",
+    "core": "core",
+    "knowledge": "ontologies",
+    "notification-rules": "notification rules",
+    "retire": "retirement",
 }
 
 
 def _plan(name: str) -> dict[str, Any] | None:
-    """Файл плана как документ package-sdk.plan/v1 или None."""
+    """The plan file as a package-sdk.plan/v1 document, or None."""
     try:
         document = json.loads(Path(name).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -52,7 +54,7 @@ def _plan(name: str) -> dict[str, Any] | None:
 
 
 def _count(section: dict[str, Any]) -> int:
-    """Изменения секции — как count_changes package-sdk."""
+    """Changes of a section — as package-sdk count_changes counts them."""
     kind = section.get("kind")
     if kind in ("catalog", "notification-rules"):
         return len(section.get("changes") or [])
@@ -76,13 +78,13 @@ def changes(document: dict[str, Any]) -> str:
         if isinstance(section, dict):
             title = TITLES.get(str(section.get("kind")), str(section.get("kind")))
             counts[title] = counts.get(title, 0) + _count(section)
-    return ", ".join(f"{title} {count}" for title, count in counts.items()) or "секций нет"
+    return ", ".join(f"{title} {count}" for title, count in counts.items()) or "no sections"
 
 
 def console(document: dict[str, Any]) -> str:
-    """Флаг overwriteConsole плана и объекты, чьи правки консоли применение перезапишет."""
+    """The plan's overwriteConsole flag and the objects whose console edits applying overwrites."""
     if document.get("overwriteConsole") is not True:
-        return "правки консоли сохраняются (overwriteConsole: нет)"
+        return "console edits are kept (overwriteConsole: no)"
     objects: list[str] = []
     for section in document.get("sections") or []:
         if not isinstance(section, dict) or section.get("kind") != "core":
@@ -97,13 +99,13 @@ def console(document: dict[str, Any]) -> str:
             ]
             if fields:
                 objects.append(f"{change.get('kind')}/{change.get('key')} ({', '.join(fields)})")
-    return "ПРАВКИ КОНСОЛИ БУДУТ ПЕРЕЗАПИСАНЫ (overwriteConsole: да)" + (
-        f": {'; '.join(objects)}" if objects else " — в объектах плана их сейчас нет"
+    return "CONSOLE EDITS WILL BE OVERWRITTEN (overwriteConsole: yes)" + (
+        f": {'; '.join(objects)}" if objects else " — the plan's objects have none at the moment"
     )
 
 
 def decide(payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Решение хука для события PreToolUse или ``None``, если инструмент не наш."""
+    """The hook's decision for a PreToolUse event, or ``None`` if the tool is not ours."""
     tool = payload.get("tool_name")
     if not isinstance(tool, str) or not TOOL.search(tool):
         return None
@@ -114,34 +116,35 @@ def decide(payload: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(plan_hash, str) or not PLAN_HASH.fullmatch(plan_hash):
         return _output(
             "deny",
-            "План применяется только по planHash плана, показанного человеку: сначала "
-            "pkg_plan, показать план целиком, получить явное «да», затем pkg_apply с "
-            "plan_file и planHash этого плана.",
+            "A plan is applied only by the planHash of the plan shown to the human: first "
+            'pkg_plan, show the whole plan, get an explicit "yes", then pkg_apply with '
+            "plan_file and planHash of that plan.",
         )
     if not isinstance(plan_file, str) or not Path(plan_file).is_absolute():
         return _output(
             "deny",
-            "plan_file — абсолютный путь к файлу плана из ответа pkg_plan (planFile).",
+            "plan_file must be the absolute path to the plan file from the pkg_plan response "
+            "(planFile).",
         )
     document = _plan(plan_file)
     if document is None:
         return _output(
             "deny",
-            f"{plan_file} не читается как план {PLAN_FORMAT}: показать его человеку нельзя — "
-            "постройте план заново (pkg_plan).",
+            f"{plan_file} does not read as a {PLAN_FORMAT} plan: it cannot be shown to the "
+            "human — build the plan again (pkg_plan).",
         )
     if document.get("planHash") != plan_hash:
         return _output(
             "deny",
-            f"В файле {plan_file} план {document.get('planHash')}, а не {plan_hash}: "
-            "применяется только тот план, который видел человек. Покажите этот план и "
-            "спросите снова или постройте план заново.",
+            f"{plan_file} holds plan {document.get('planHash')}, not {plan_hash}: "
+            "only the plan the human has seen is applied. Show this plan and ask again "
+            "or build the plan again.",
         )
     return _output(
         "ask",
-        f"Применить план {plan_file} на стенд {document.get('server')} ({plan_hash}); "
-        f"изменений: {changes(document)}; {console(document)}? Подтверждайте, только если "
-        "этот план показан вам целиком и вы согласны с ним.",
+        f"Apply plan {plan_file} to server {document.get('server')} ({plan_hash}); "
+        f"changes: {changes(document)}; {console(document)}? Confirm only if this whole "
+        "plan has been shown to you and you agree with it.",
     )
 
 
@@ -159,7 +162,7 @@ def main() -> None:
     try:
         payload = json.load(sys.stdin)
     except (ValueError, OSError):
-        # Непонятный вход — отказ: применение без проверки не пропускается.
+        # Unreadable input is a denial: applying without the check is never let through.
         payload = {"tool_name": "pkg_apply", "tool_input": {}}
     output = decide(payload if isinstance(payload, dict) else {})
     if output is not None:

@@ -62,7 +62,7 @@ def test_describe_and_docs(form: str, capsys: pytest.CaptureFixture[str]) -> Non
     assert cli.main(["docs", form]) == 0
     assert cli.main(["docs", form, "--write"]) == 0
     assert cli.main(["docs", form, "--check"]) == 0
-    assert "не совпадает с именем каталога" not in capsys.readouterr().err
+    assert "does not match the directory name" not in capsys.readouterr().err
 
 
 def test_add_and_edit_rename(package: Path, form: str) -> None:
@@ -81,7 +81,7 @@ def test_image(package: Path, form: str, capsys: pytest.CaptureFixture[str]) -> 
 def test_check_test_and_migrate(form: str, capsys: pytest.CaptureFixture[str]) -> None:
     pytest.importorskip("control_plane", reason="check — кодом ядра (extra sandbox)")
     assert cli.main(["check", "--package", form]) == 0
-    assert "ok: пакетов 1" in capsys.readouterr().out
+    assert "ok: packages 1" in capsys.readouterr().out
     assert cli.main(["test", form]) == 0
     assert cli.main(["migrate-expr", "--package", form]) == 0
 
@@ -97,5 +97,5 @@ def test_symlink_named_as_the_key_does_not_rename_its_target(
     with pytest.raises(PackageError, match="'checkout-123'"):
         load_package(Path(KEY))
     assert cli.main(["describe", KEY]) == 1
-    assert "не совпадает с именем каталога 'checkout-123'" in capsys.readouterr().err
+    assert "does not match the directory name 'checkout-123'" in capsys.readouterr().err
     assert os.path.islink(KEY)

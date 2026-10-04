@@ -237,7 +237,7 @@ def test_a_core_schema_without_the_sandbox_tenant_is_not_the_sandbox_database() 
     core = {"public.alembic_version", "public.tenants", "public.tasks"}
     refusal = sandbox.database_refusal(core, [], sandbox_tenant=False)
     assert refusal is not None and sandbox.SANDBOX_TENANT in refusal
-    assert "пересоздайте базу" in refusal  # в том числе после прерванного первого прогона
+    assert "recreate the database" in refusal  # в том числе после прерванного первого прогона
 
 
 # --- пирамида ---------------------------------------------------------------------------
@@ -281,11 +281,11 @@ def test_cli_test_prints_the_pyramid_and_json(
 
     assert cli.main(["test", str(FLOW), "--env", os.devnull]) == 1
     out = capsys.readouterr().out
-    assert "ok   контракты скиллов (skill-sdk export --check)" in out
+    assert "ok   skill contracts (skill-sdk export --check)" in out
     assert "SKIP tests/request-reopened.test.yaml" in out and "[rule request-reopened]" in out
     assert "ok   tests/request-intake.test.yaml" in out
-    assert "покрытие правила request-reopened (тестов 0)" in out
-    assert "не пройдено: пирамида пакетов review-flow" in out
+    assert "coverage rule request-reopened (tests 0)" in out
+    assert "failed: test pyramid of packages review-flow" in out
     assert len(calls) == 2  # skill-sdk export --check и pytest кода интеграции
 
     assert cli.main(["test", str(FLOW), "--env", os.devnull, "--test", "request-intake"]) == 0
@@ -295,7 +295,7 @@ def test_cli_test_prints_the_pyramid_and_json(
     assert report["runner"] == "sandbox" and report["packages"] == ["review-flow"]
 
     assert cli.main(["test", str(FLOW), "--env", os.devnull, "--test", "no-such"]) == 1
-    assert "нет тестов" in capsys.readouterr().out
+    assert "no tests" in capsys.readouterr().out
 
 
 def test_a_skill_that_drifted_from_its_code_fails_the_skills_stage(packages: Path) -> None:
@@ -429,8 +429,8 @@ def test_a_failed_check_stops_the_pyramid(packages: Path) -> None:
         ("scenarios", "skipped"),
     ]
     (problem,) = report["stages"][0]["problems"]
-    assert "rule 'other' — такого WorkRule нет в пакете review-flow" in problem["message"]
-    assert "тесты не запускались" in report["stages"][-1]["detail"]
+    assert "rule 'other' — no such WorkRule in package review-flow" in problem["message"]
+    assert "tests were not run" in report["stages"][-1]["detail"]
 
 
 class FakeCore:
@@ -673,7 +673,7 @@ def test_a_stand_database_is_refused_before_any_migration(database: str) -> None
 
     message = _refused(database)
 
-    assert "acme" in message and "ничего не изменено" in message
+    assert "acme" in message and "nothing changed" in message
     assert _schema(database) == before  # ни ревизии, ни колонок миграции не тронули
 
 
@@ -683,7 +683,7 @@ def test_a_core_schema_without_tenants_is_refused_untouched(database: str) -> No
 
     message = _refused(database)
 
-    assert sandbox.SANDBOX_TENANT in message and "ничего не изменено" in message
+    assert sandbox.SANDBOX_TENANT in message and "nothing changed" in message
     assert _schema(database) == before
     from sqlalchemy import create_engine, text
 
@@ -708,4 +708,4 @@ def test_a_database_newer_than_the_core_is_a_clear_error(database: str) -> None:
     sandbox.prepare_database(database)
     _execute(database, "UPDATE alembic_version SET version_num = 'f0f0f0f0f0f0'")
 
-    assert "новее ядра" in _refused(database)
+    assert "newer than the core" in _refused(database)

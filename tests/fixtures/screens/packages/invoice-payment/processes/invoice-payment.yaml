@@ -1,0 +1,47 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# A supplier invoice: accounting checks it, then pays it.
+apiVersion: taimen.ai/v1
+kind: Process
+key: invoice-payment
+spec:
+  version: 1
+  displayName: Invoice payment
+  owner: [{role: accounting}]
+  data:
+    type: object
+    required: [number, supplier, amount, currency]
+    properties:
+      number: {type: string}
+      supplier: {type: string}
+      supplierInn: {type: string}
+      amount: {type: number}
+      currency: {type: string, enum: [RUB, EUR, USD]}
+      dueDate: {type: string, format: date}
+      review: {type: string, enum: [ok, mismatch]}
+      paymentReference: {type: string}
+  start:
+    on: {observation: invoice.received}
+    key: "'invoice:' + string(event.payload.number)"
+    set:
+      number: string(event.payload.number)
+      supplier: string(event.payload.supplier)
+      amount: double(event.payload.amount)
+      currency: string(event.payload.currency)
+  stages:
+    - id: review
+      steps:
+        - id: review-invoice
+          human:
+            taskType: task
+            assign: [{role: accounting}]
+          output: {as: {review: step.result.review}}
+    - id: payment
+      steps:
+        - id: pay-invoice
+          when: data.review == 'ok'
+          human:
+            taskType: task
+            assign: [{role: accounting}]
+          output: {as: {paymentReference: step.result.reference}}
+        - id: close
+          complete: {outcome: closed}

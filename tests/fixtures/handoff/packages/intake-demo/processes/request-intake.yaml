@@ -1,0 +1,32 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Заявка: автор события — submittedBy; задача рассмотрения приходит человеку с уже
+# заполненными полями request и submittedBy.
+apiVersion: taimen.ai/v1
+kind: Process
+key: request-intake
+spec:
+  version: 1
+  displayName: Request intake
+  identity: {agent: request-intake-process}
+  owner: [{role: reviewer}]
+  data:
+    type: object
+    properties:
+      request: {type: string}
+      submittedBy: {type: string}
+      decision: {type: string}
+  start:
+    on: {observation: request.submitted}
+    key: event.payload.id
+    set: {request: event.payload.id, submittedBy: string(event.actorId)}
+  stages:
+    - id: review
+      steps:
+        - id: review-request
+          human:
+            taskType: request-review
+            assign: [{role: reviewer}]
+            customFields: {request: data.request, submittedBy: data.submittedBy}
+          output: {as: {decision: step.result.decision}}
+        - id: close
+          complete: {outcome: reviewed}

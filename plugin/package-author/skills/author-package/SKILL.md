@@ -36,6 +36,12 @@ description: Описать процесс в пакете каталога по
   .layout/<ключ>.json     # раскладка схемы — не трогать руками
 ```
 
+Workflow CI (`package.yml` в каталоге workflow) `init` пишет по манифесту раскладки
+установки: компоненты платформы клонируются в `.platform/` по их путям в этой раскладке.
+После обновления package-sdk workflow перегенерирует `package-sdk workflow <каталог>`
+(`--check` — только сверить); дописанные к `uv tool install` опции `--with` сохраняются,
+прочие ручные правки — нет, поэтому покажи человеку diff.
+
 Каждый файл — объект в обёртке, первая строка — ссылка на схему для
 редактора (путь к схеме установленного package-sdk пишет `package-sdk add`):
 
@@ -111,7 +117,7 @@ package-sdk edit set       --file … --path 'spec.stages[review].exit' --value 
 
 | Вид шага | Что делает |
 |---|---|
-| `human` | задача человеку: `taskType`, `title`, `form` (schema + uischema), `assign`, `due`, `escalations`, `context` |
+| `human` | задача человеку: `taskType`, `title`, `customFields`, `form` (schema + uischema), `assign`, `due`, `escalations`, `context` |
 | `approve` | согласование: `approvers`, `mode` parallel/sequential, `quorum` all/any/`{atLeast: N}`/`{percent: P}`, `earlyDecision`, `separationOfDuties`, `due`, `onDue` |
 | `call` | скилл `name@version`, агент или вложенный процесс; `input`, `timeout`, `due`, `context` |
 | `decide` | таблица решений из `spec.decisions`: `{table: <id>}` |
@@ -149,9 +155,29 @@ package-sdk edit set       --file … --path 'spec.stages[review].exit' --value 
   `spec.calendar`) и `warnBefore` (порог предупреждения: длительность,
   `{workdays: N}` или `{workhours: N}`):
   `due: {workdays: 5, warnBefore: {workdays: 1}}`, `due: {workhours: 8, warnBefore: {workhours: 2}}`.
+  Число рабочих единиц срока и `warnBefore` может быть выражением, дающим целое, —
+  обычно настройкой пакета: `due: {workdays: {expr: settings.reviewDueWorkdays}, warnBefore: {workhours: 4}}`.
+  Ядро вычисляет его один раз при входе в шаг; поле настроек должно быть `integer`
+  (иначе `settings_ref_type` по пути `…/due/workdays/expr`). Это лучше формы
+  `{at: "cal.addWorkdays(...)"}`: у неё нет `warnBefore`, и после паузы срок не сдвигается.
   Рабочие единицы считает календарь; `workhours` — только календарь с
   `workingHours` (`intervals` обычного дня `{from: "09:00", to: "18:00"}`,
   `weekdays` по дню недели ISO, `shortDayReduction` для сокращённых дней).
+- `customFields` шага `human` — предзаполнение полей задачи данными дела: имя поля
+  `fieldSchema` типа задачи → CEL. Ядро проверяет его при публикации (поля нет в
+  `fieldSchema` — `unknown_custom_field`, выражение другого типа —
+  `custom_field_type_mismatch`, находка с путём до поля, например
+  `/spec/stages/0/steps/0/human/customFields/request`) и при создании задачи; значение
+  `null` оставляет поле человеку, что он введёт, ложится поверх предзаполненного:
+
+  ```yaml
+  - id: review-request
+    human:
+      taskType: request-review
+      assign: [{role: reviewer}]
+      customFields: {request: data.request, submittedBy: data.submittedBy}
+    output: {as: {decision: step.result.decision}}
+  ```
 - Назначение (`assign`, `approvers`, `owner`, `escalations[].to`) —
   цепочка кандидатов: `{role: slug}`, `{principal: ${VAR}}`, `{agent: key}`,
   `{expr: <CEL>}`. Берётся первый разрешимый.

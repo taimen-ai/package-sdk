@@ -131,22 +131,24 @@ _FILE_MODES = frozenset({"100644", "100755"})
 def check_url(url: str) -> str:
     if not _URL.match(url):
         raise PackageError(
-            f"источник git {url!r}: нужен https://хост/путь без учётных данных в адресе или "
-            "git@хост:путь (учётные данные — в credential helper git, не в установке)"
+            f"git source {url!r}: expected https://host/path without credentials in the URL or "
+            "git@host:path (credentials belong in the git credential helper, not in the "
+            "installation)"
         )
     return url
 
 
 def check_ref(ref: str) -> str:
     if not _REF.match(ref) or ".." in ref or ref.endswith((".", "/", ".lock")) or "//" in ref:
-        raise PackageError(f"ref {ref!r}: нужно имя тега (refs/tags/<ref>)")
+        raise PackageError(f"ref {ref!r}: expected a tag name (refs/tags/<ref>)")
     return ref
 
 
 def check_subdir(subdir: str) -> str:
     if not _SUBDIR.match(subdir) or any(part in (".", "..") for part in subdir.split("/")):
         raise PackageError(
-            f"путь пакета в репозитории {subdir!r}: нужен относительный путь без «.» и «..»"
+            f"package path in the repository {subdir!r}: expected a relative path "
+            "without `.` and `..`"
         )
     return subdir
 
@@ -229,7 +231,7 @@ class GitCache:
                 input=stdin,
             ).stdout
         except FileNotFoundError as error:
-            raise PackageError("для источников git нужен git в PATH") from error
+            raise PackageError("git sources need git in PATH") from error
         except subprocess.CalledProcessError as error:
             output = error.stderr or error.stdout or ""
             if isinstance(output, bytes):
@@ -271,11 +273,11 @@ class GitCache:
             ).strip()
         except PackageError as error:
             raise PackageError(
-                f"{url}: тега {ref!r} нет — ref источника git только тег (refs/tags/<ref>), "
-                "ветки и коммиты не принимаются"
+                f"{url}: no tag {ref!r} — the ref of a git source is a tag only (refs/tags/<ref>), "
+                "branches and commits are not accepted"
             ) from error
         if not _SHA.match(commit):
-            raise PackageError(f"{url}: тег {ref!r} не указывает на коммит")
+            raise PackageError(f"{url}: tag {ref!r} does not point to a commit")
         return commit
 
     def has(self, url: str, commit: str) -> bool:
@@ -313,8 +315,8 @@ class GitCache:
                 intact = ready.is_dir() and install_hash(ready) == expected
             except (FileNotFoundError, NotADirectoryError) as error:
                 raise PackageError(
-                    f"{url} {commit[:12]}: выгрузка {ready} удалена во время чтения "
-                    "(параллельный package-sdk cache prune?) — повторите команду"
+                    f"{url} {commit[:12]}: checkout {ready} was removed while being read "
+                    "(a concurrent package-sdk cache prune?) — run the command again"
                 ) from error
             if intact:
                 return touch(ready)
@@ -343,11 +345,11 @@ class GitCache:
             staging.rename(target)
         except OSError as error:
             if not target.is_dir():
-                raise PackageError(f"выгрузка {target} не записана: {error}") from error
+                raise PackageError(f"checkout {target} not written: {error}") from error
             if install_hash(target) != actual:
                 raise PackageError(
-                    f"выгрузку {target} одновременно записал другой процесс, и её содержимое "
-                    "разошлось с именем — повторите команду"
+                    f"checkout {target} was written concurrently by another process and its "
+                    "content does not match its name — run the command again"
                 ) from error
         return target
 
@@ -370,23 +372,23 @@ class GitCache:
                 path = name.decode("utf-8")
             except UnicodeDecodeError as error:
                 raise PackageError(
-                    f"{url} {commit[:12]}: имя файла не в UTF-8 ({name!r}) — переименуйте файл "
-                    "в пакете"
+                    f"{url} {commit[:12]}: file name is not UTF-8 ({name!r}) — rename the file "
+                    "in the package"
                 ) from error
             if not path.startswith(prefix):
                 continue
             inner = path[len(prefix) :]
             parts = inner.split("/")
             if any(p in ("", ".", "..", ".git") for p in parts):
-                raise PackageError(f"{url} {commit[:12]}: недопустимый путь в дереве {path!r}")
+                raise PackageError(f"{url} {commit[:12]}: invalid path in the tree {path!r}")
             if kind != "blob" or mode not in _FILE_MODES:
                 what = {
-                    "120000": "символическая ссылка",
-                    "160000": "сабмодуль",
-                }.get(mode, f"режим {mode} ({kind})")
+                    "120000": "symbolic link",
+                    "160000": "submodule",
+                }.get(mode, f"mode {mode} ({kind})")
                 raise PackageError(
-                    f"{url} {commit[:12]}: {path} — {what}; в пакете только обычные файлы "
-                    "(режимы 100644 и 100755)"
+                    f"{url} {commit[:12]}: {path} — {what}; a package holds regular files only "
+                    "(modes 100644 and 100755)"
                 )
             entries.append((mode, kind, blob, inner))
         # Файлы и каталоги (Roles/ и roles/): на файловой системе без учёта регистра это один
@@ -398,10 +400,10 @@ class GitCache:
                 step = "/".join(parts[:depth])
                 other = folded.setdefault(step.casefold(), step)
                 if other != step:
-                    what = "файл" if depth == len(parts) else "каталог"
+                    what = "file" if depth == len(parts) else "directory"
                     raise PackageError(
-                        f"{url} {commit[:12]}: {other} и {step} различаются только регистром — на "
-                        f"файловой системе без учёта регистра это один {what}"
+                        f"{url} {commit[:12]}: {other} and {step} differ only in case — on a "
+                        f"case-insensitive file system this is the same {what}"
                     )
         return entries
 
@@ -421,7 +423,7 @@ class GitCache:
             end = output.index(b"\n", position)
             header = output[position:end].decode("ascii").split()
             if len(header) != 3 or header[0] != blob or header[1] != "blob":
-                raise PackageError(f"{url}: cat-file не отдал блоб {blob[:12]}: {header}")
+                raise PackageError(f"{url}: cat-file did not return blob {blob[:12]}: {header}")
             size = int(header[2])
             found[blob] = output[end + 1 : end + 1 + size]
             position = end + 1 + size + 1
@@ -430,7 +432,7 @@ class GitCache:
     def extract(self, url: str, commit: str, subdir: str | None, parent: Path) -> Path:
         """Содержимое пакета на коммите во временный каталог в parent."""
         if not _SHA.match(commit):
-            raise PackageError(f"коммит {commit!r}: нужен SHA-1 из 40 шестнадцатеричных цифр")
+            raise PackageError(f"commit {commit!r}: expected a SHA-1 of 40 hex digits")
         if subdir:
             check_subdir(subdir)
         entries = self._listing(url, commit, subdir)
@@ -497,15 +499,15 @@ def read_lock_file(path: Path) -> dict[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise PackageError(f"{_rel(path)}: не JSON: {error}") from error
+        raise PackageError(f"{_rel(path)}: not JSON: {error}") from error
     problems = sorted(
         schema_module.validator(schema_module.LOCK).iter_errors(document),
         key=lambda e: list(e.absolute_path),
     )
     if problems:
         first = problems[0]
-        where = "/".join(str(p) for p in first.absolute_path) or "(корень)"
-        raise PackageError(f"{_rel(path)}: не {LOCK_FORMAT}: {where}: {first.message}")
+        where = "/".join(str(p) for p in first.absolute_path) or "(root)"
+        raise PackageError(f"{_rel(path)}: not {LOCK_FORMAT}: {where}: {first.message}")
     result: dict[str, Any] = document
     return result
 
@@ -522,7 +524,7 @@ def _source_of(package: Package, base: Path) -> dict[str, str]:
 def _version(package: Package) -> str:
     version = package.spec.get("version")
     if version in (None, ""):
-        raise PackageError(f"{_rel(package.path / 'package.yaml')}: нет spec.version")
+        raise PackageError(f"{_rel(package.path / 'package.yaml')}: no spec.version")
     return str(version)
 
 
@@ -551,18 +553,18 @@ class _GitSources:
         locked = self.entries.get(key)
         if locked is None or locked.get("commit") is None:
             raise PackageError(
-                f"lock_required: пакет {key!r} из git ({url} {ref}) не зафиксирован — "
-                "package-sdk lock --install <файл установки>"
+                f"lock_required: package {key!r} from git ({url} {ref}) is not locked — "
+                "package-sdk lock --install <installation file>"
             )
         wanted = {"git": url, "ref": ref, **({"path": str(subdir)} if subdir else {})}
         if locked.get("source") != wanted:
             raise PackageError(
-                f"lock_stale: пакет {key!r}: в lock источник {locked.get('source')}, в установке "
-                f"{wanted} — зафиксируйте заново: package-sdk lock"
+                f"lock_stale: package {key!r}: source in lock {locked.get('source')}, "
+                f"in the installation {wanted} — lock again: package-sdk lock"
             )
         commit = str(locked["commit"])
         if not _SHA.match(commit):
-            raise PackageError(f"lock: коммит пакета {key!r} — не SHA-1: {commit!r}")
+            raise PackageError(f"lock: commit of package {key!r} is not a SHA-1: {commit!r}")
         if self.fetch or not self.cache.has(url, commit):
             try:
                 with self.cache.locked(url):
@@ -570,11 +572,12 @@ class _GitSources:
             except PackageError as error:
                 if not self.cache.has(url, commit):
                     raise PackageError(
-                        f"пакет {key!r}: источник {url} недоступен, а коммита {commit[:12]} из "
-                        f"lock в кэше нет — {error}"
+                        f"package {key!r}: source {url} is unavailable and commit {commit[:12]} "
+                        f"from lock is not in the cache — {error}"
                     ) from error
                 self.log(
-                    f"   ! {key}: источник {url} недоступен — содержимое {commit[:12]} из кэша"
+                    f"   ! {key}: source {url} is unavailable — content {commit[:12]} "
+                    "from the cache"
                 )
             else:
                 if self.fetch:
@@ -582,26 +585,26 @@ class _GitSources:
                         current = self.cache.resolve(url, ref)
                     if current != commit:
                         raise PackageError(
-                            f"source_ref_moved: пакет {key!r}: {ref} в {url} указывает на "
-                            f"{current[:12]}, а в lock — {commit[:12]}: содержимое под тем же "
-                            "тегом подменено. Проверьте источник и зафиксируйте заново "
-                            "(package-sdk lock), если новое содержимое принято"
+                            f"source_ref_moved: package {key!r}: {ref} in {url} points to "
+                            f"{current[:12]}, but lock has {commit[:12]}: content under the same "
+                            "tag was replaced. Check the source and lock again "
+                            "(package-sdk lock) if the new content is accepted"
                         )
         if not self.cache.has(url, commit):
-            raise PackageError(f"пакет {key!r}: коммита {commit[:12]} из lock нет в {url}")
+            raise PackageError(f"package {key!r}: commit {commit[:12]} from lock is not in {url}")
         expected = str(locked.get("contentHash"))
         # mtime выгрузки — «в работе»: prune не трогает её, пока установка её читает
         directory = touch(self.cache.materialize(url, commit, subdir, expected))
         if not (directory / "package.yaml").exists():
             raise PackageError(
-                f"пакет {key!r}: в {url} на {commit[:12]} нет package.yaml"
-                + (f" в {subdir}" if subdir else "")
+                f"package {key!r}: no package.yaml in {url} at {commit[:12]}"
+                + (f" in {subdir}" if subdir else "")
             )
         actual = install_hash(directory)
         if actual != expected:
             raise PackageError(
-                f"content_mismatch: пакет {key!r}: содержимое {url} на {commit[:12]} "
-                f"({actual[:19]}…) разошлось с lock ({str(expected)[:19]}…)"
+                f"content_mismatch: package {key!r}: content of {url} at {commit[:12]} "
+                f"({actual[:19]}…) does not match lock ({str(expected)[:19]}…)"
             )
         self.commits[key] = commit
         return directory
@@ -642,30 +645,32 @@ def load(
         if document is None or not strict:
             continue
         if entry is None:
-            problems.append(f"lock_stale: пакета {package.key!r} нет в lock")
+            problems.append(f"lock_stale: package {package.key!r} is not in lock")
         elif entry.get("source") != source:
             problems.append(
-                f"lock_stale: пакет {package.key!r}: в lock источник {entry.get('source')}, "
-                f"в установке {source}"
+                f"lock_stale: package {package.key!r}: source in lock {entry.get('source')}, "
+                f"in the installation {source}"
             )
         elif entry.get("contentHash") != current.content_hash:
             problems.append(
-                f"content_mismatch: пакет {package.key!r} ({_rel(package.path)}) изменился после "
-                "фиксации"
+                f"content_mismatch: package {package.key!r} ({_rel(package.path)}) changed after "
+                "locking"
             )
         elif str(entry.get("version")) != current.version:
             problems.append(
-                f"lock_stale: пакет {package.key!r}: в lock версия {entry.get('version')}, в "
-                f"манифесте {current.version}"
+                f"lock_stale: package {package.key!r}: version in lock {entry.get('version')}, in "
+                f"the manifest {current.version}"
             )
     if document is not None and strict:
         extra = sorted(set(entries) - {p.key for p in installation.packages})
         if extra:
-            problems.append(f"lock_stale: в lock пакеты не из установки: {', '.join(extra)}")
+            problems.append(
+                f"lock_stale: lock has packages not in the installation: {', '.join(extra)}"
+            )
     if problems:
         raise PackageError(
-            f"{_rel(lock_path(install))} не соответствует установке — зафиксируйте заново "
-            "(package-sdk lock), если изменения приняты:\n  " + "\n  ".join(problems)
+            f"{_rel(lock_path(install))} does not match the installation — lock again "
+            "(package-sdk lock) if the changes are accepted:\n  " + "\n  ".join(problems)
         )
     return Sources(
         installation=installation,
@@ -700,8 +705,8 @@ def lock(
         extracted[key] = "sha256:" + directory.name
         if not (directory / "package.yaml").exists():
             raise PackageError(
-                f"пакет {key!r}: в {url} на {commit[:12]} нет package.yaml"
-                + (f" в {subdir}" if subdir else "")
+                f"package {key!r}: no package.yaml in {url} at {commit[:12]}"
+                + (f" in {subdir}" if subdir else "")
             )
         old = before.get(key)
         if (
@@ -710,8 +715,8 @@ def lock(
             and old.get("source", {}).get("ref") == str(ref)
         ):
             log(
-                f"   ! {key}: {ref} теперь указывает на {commit[:12]} (в прежнем lock "
-                f"{str(old['commit'])[:12]}) — тег переставлен, проверьте источник"
+                f"   ! {key}: {ref} now points to {commit[:12]} (previous lock had "
+                f"{str(old['commit'])[:12]}) — the tag was moved, check the source"
             )
         return directory
 
@@ -727,9 +732,9 @@ def lock(
             # выгрузку удалили или подменили, пока lock её читал (например, cache prune):
             # такой хэш зафиксировал бы не содержимое тега
             raise PackageError(
-                f"lock не записан: выгрузка пакета {package.key!r} изменилась во время "
-                f"фиксации ({content_hash[:19]}… вместо {wanted[:19]}…) — повторите "
-                "package-sdk lock"
+                f"lock not written: checkout of package {package.key!r} changed while "
+                f"locking ({content_hash[:19]}… instead of {wanted[:19]}…) — run "
+                "package-sdk lock again"
             )
         entries.append(
             Locked(
@@ -746,14 +751,14 @@ def lock(
     document["packages"] = entries
     problems = schema_module.errors(schema_module.LOCK, document)
     if problems:
-        raise PackageError(f"lock не записан: не {LOCK_FORMAT}: {problems[0]}")
+        raise PackageError(f"lock not written: not {LOCK_FORMAT}: {problems[0]}")
     path = lock_path(install)
     _write_atomically(path, json.dumps(document, ensure_ascii=False, indent=2) + "\n")
     for entry in entries:
         where = entry["source"].get("git") or entry["source"].get("path")
         commit = f" {entry['commit'][:12]}" if entry.get("commit") else ""
         log(f"   {entry['key']} {entry['version']}: {where}{commit} {entry['contentHash'][:19]}…")
-    log(f"записан {_rel(path)}")
+    log(f"written {_rel(path)}")
     return document
 
 
@@ -795,7 +800,8 @@ def validate_installation(install: Path) -> None:
     problems = schema_module.errors(schema_module.OBJECT, document)
     if problems:
         raise PackageError(
-            f"{_rel(install)}: установка не по схеме формата:\n  " + "\n  ".join(problems[:5])
+            f"{_rel(install)}: the installation does not match the format schema:\n  "
+            + "\n  ".join(problems[:5])
         )
 
 
@@ -816,8 +822,8 @@ def find_locks(root: Path, *, depth: int = FIND_LOCKS_DEPTH) -> list[Path]:
     start = root.resolve()
     if start in (Path.home().resolve(), Path(start.anchor)):
         raise PackageError(
-            f"lock-файлы не ищутся в {start}: это не каталог проекта — запустите prune в "
-            "каталоге установок или назовите их lock-файлы (--lock)"
+            f"lock files are not searched in {start}: it is not a project directory — run prune in "
+            "the installations directory or name their lock files (--lock)"
         )
     found: list[Path] = []
     for current, dirs, files in os.walk(start):
@@ -867,7 +873,7 @@ def prune(
         keep = set()
         for path in used:
             if not path.is_file():
-                raise PackageError(f"{path}: lock-файла нет — ничего не удалено")
+                raise PackageError(f"{path}: no lock file — nothing removed")
             document = read_lock_file(path)
             for entry in document.get("packages") or []:
                 source = entry.get("source") or {}
@@ -888,7 +894,7 @@ def prune(
         with cache._locked_dir(directory):
             result.removed += _prune_source(directory, keep, result)
     for path in result.removed:
-        log(f"   удалено {path}")
+        log(f"   removed {path}")
     return result
 
 

@@ -4,10 +4,11 @@
 
 - ``catalog`` — виды, которые ставит установщик обычными ресурсами ядра (роли, скиллы,
   типы артефактов, …), как данные: ``{package, kind, key, operation, fields, expected}``;
-- ``core`` — по пакету с процессами или календарями ответ ядра ``POST /packages:plan`` с его
-  ``planHash``. Ядро планирует и ставит у такого пакета все свои виды (``CORE_PLANNED_KINDS``:
-  типы задач, агенты, календари, процессы, правила вывода работы — CP-ADR-0074 п.11,
-  амендмент 2026-09-29), поэтому в секцию ``catalog`` они у него не входят;
+- ``core`` — по пакету с процессами, календарями или экранами (``View``, ``Component``) ответ
+  ядра ``POST /packages:plan`` с его ``planHash``. Ядро планирует и ставит у такого пакета все
+  свои виды (``CORE_PLANNED_KINDS``: типы задач, агенты, календари, процессы, правила вывода
+  работы — CP-ADR-0074 п.11, амендмент 2026-09-29; виды — CP-ADR-0080), поэтому в секцию
+  ``catalog`` они у него не входят;
 - ``knowledge`` — регистрация онтологий пакетов и итоговые наборы онтологий пространств
   работы с текущими;
 - ``notification-rules`` — правила уведомлений, прошедшие ``:validate`` сервиса;
@@ -65,6 +66,8 @@ from package_sdk.model import (
     DEFAULT_REPLAY_LIMIT,
     ENV_REF,
     PLAN_KINDS,
+    SCREEN_KINDS,
+    VERSIONED_REF_KINDS,
     Installation,
     Package,
     PackageError,
@@ -86,7 +89,7 @@ VARIABLE_LOOKUP = {
     "principal": "/principals/{id}",
     "role": "/roles/{id}",
 }
-RETIRE_REASON = "retire в установке пакетов"
+RETIRE_REASON = "retired by package installation"
 # Стенд плана — https; http только на своей машине (как pattern server в plan.schema.json).
 SERVER = re.compile(
     r"^(https://[^\s/@]+(/\S*)?|http://(localhost|127\.0\.0\.1|\[::1\])(:[0-9]+)?(/\S*)?)$"
@@ -97,7 +100,7 @@ def check_server(server: str) -> str:
     server = server.rstrip("/")
     if not SERVER.match(server):
         raise PackageError(
-            f"стенд {server!r}: нужен https://… (http — только localhost), без учётных данных"
+            f"stand {server!r}: expected https://… (http only for localhost), without credentials"
         )
     return server
 
@@ -123,7 +126,9 @@ class Target:
     def __post_init__(self) -> None:
         if self.token is not None:
             if any(name.lower() == "authorization" for name in self.headers):
-                raise ValueError("Target: учётка — либо token, либо Authorization в headers")
+                raise ValueError(
+                    "Target: credential is either token or Authorization in headers, not both"
+                )
             # dataclasses.replace(target) передаёт уже обёрнутый транспорт: оборачивается
             # исходный, иначе на 401 повторов стало бы два (по одному на обёртку)
             inner = self.http.http if isinstance(self.http, Authorized) else self.http
@@ -182,12 +187,14 @@ def core_version(target: Target) -> str:
         document = target.http.call("GET", OPENAPI_PATH, None, target.headers)
     except (RuntimeError, OSError) as error:
         raise PackageError(
-            f"версия ядра не прочитана ({OPENAPI_PATH}: {error}) — совместимость пакетов "
-            "(engines) без неё не проверить, план не строится"
+            f"core version not read ({OPENAPI_PATH}: {error}) — package compatibility "
+            "(engines) cannot be checked without it, the plan is not built"
         ) from error
     version = ((document or {}).get("info") or {}).get("version")
     if not isinstance(version, str) or not version:
-        raise PackageError(f"{OPENAPI_PATH} ядра без info.version — совместимость не проверить")
+        raise PackageError(
+            f"the core's {OPENAPI_PATH} has no info.version — compatibility cannot be checked"
+        )
     return version
 
 
@@ -201,14 +208,14 @@ def engines_problems(installation: Installation, version: str) -> tuple[list[str
         for component, spec in (package.spec.get("engines") or {}).items():
             if component != CORE_COMPONENT:
                 warnings.append(
-                    f"{where}: engines {component} {spec} — версию {component} стенда план не "
-                    "читает, совместимость не проверена"
+                    f"{where}: engines {component} {spec} — the plan does not read the stand's "
+                    f"{component} version, compatibility not checked"
                 )
                 continue
             if not satisfies(version, str(spec)):
                 errors.append(
-                    f"{where}: engines_incompatible: пакет {package.key} совместим с "
-                    f"{component} {spec}, а на стенде {component} {version}"
+                    f"{where}: engines_incompatible: package {package.key} is compatible with "
+                    f"{component} {spec}, but the stand has {component} {version}"
                 )
     return errors, warnings
 
@@ -243,11 +250,11 @@ def variable_values(installation: Installation, env: Mapping[str, str]) -> dict[
                 own[name] = env[name]
             else:
                 missing.append(
-                    f"переменная {name} не задана — установка: workspace включения онтологий"
+                    f"variable {name} is not set — installation: workspace of ontology enablement"
                 )
     if missing:
         raise PackageError(
-            "не заданы переменные установки:\n  " + "\n  ".join(dict.fromkeys(missing))
+            "installation variables not set:\n  " + "\n  ".join(dict.fromkeys(missing))
         )
     return {"packages": packages, "installation": own}
 
@@ -266,7 +273,7 @@ def variable_problems(
             kind = str(declared.get("kind", "string"))
             problem = variable_value_error(kind, value)
             if problem:
-                problems.append(f"переменная {name} пакета {package.key}: {value!r} — {problem}")
+                problems.append(f"variable {name} of package {package.key}: {value!r} — {problem}")
                 continue
             if kind not in VARIABLE_LOOKUP:
                 continue
@@ -278,9 +285,11 @@ def variable_problems(
                 except HttpError as error:
                     if error.status != 404:
                         raise
-                    checked[(kind, value)] = f"{kind} {value} не найден на стенде"
+                    checked[(kind, value)] = f"{kind} {value} not found on the stand"
             if checked[(kind, value)]:
-                problems.append(f"переменная {name} пакета {package.key}: {checked[(kind, value)]}")
+                problems.append(
+                    f"variable {name} of package {package.key}: {checked[(kind, value)]}"
+                )
     return problems
 
 
@@ -288,8 +297,12 @@ def variable_problems(
 
 
 def core_packages(installation: Installation) -> list[Package]:
-    """Пакеты, которые ставит план ядра: с процессами или календарями."""
-    return [p for p in installation.packages if any(o.kind in PLAN_KINDS for o in p.objects)]
+    """Пакеты, которые ставит план ядра: с процессами, календарями или экранами."""
+    return [
+        p
+        for p in installation.packages
+        if any(o.kind in PLAN_KINDS or o.kind in SCREEN_KINDS for o in p.objects)
+    ]
 
 
 def owned_by_core(installation: Installation) -> dict[str, frozenset[str]]:
@@ -332,7 +345,9 @@ def core_section(
     )
     response = target.process_api().plan(request)
     if not response.get("planHash"):
-        raise PackageError(f"ядро не вернуло planHash пакета {package.key} — применять нечего")
+        raise PackageError(
+            f"the core returned no planHash for package {package.key} — nothing to apply"
+        )
     section: dict[str, Any] = {
         "kind": "core",
         "package": package.key,
@@ -380,7 +395,7 @@ def knowledge_section(
                     "key": obj.key,
                     "operation": "register",
                     "version": str(obj.spec.get("version")),
-                    "detail": f"онтология {ref} будет зарегистрирована",
+                    "detail": f"ontology {ref} will be registered",
                 }
             )
             continue
@@ -391,8 +406,8 @@ def knowledge_section(
         ]
         if differs:
             raise PackageError(
-                f"{_rel(obj.path)}: онтология {ref} уже зарегистрирована, а {', '.join(differs)} "
-                "в пакете другие — версия онтологии неизменяема, поднимите version"
+                f"{_rel(obj.path)}: ontology {ref} is already registered, but {', '.join(differs)} "
+                "differ in the package — an ontology version is immutable, bump version"
             )
     enable: list[dict[str, Any]] = []
     for entry in knowledge_targets(installation, dict(env)):
@@ -469,16 +484,16 @@ def _retire_core(target: Target, kind: str, key: str, retiring: set[str]) -> dic
                     "operation": "retire",
                     "expected": {"status": "active"},
                     "after": sorted(f"Process/{p.get('key')}" for p in processes),
-                    "detail": "календарь освободится после вывода процессов этого плана",
+                    "detail": "the calendar will be free after this plan retires the processes",
                 }
             names = ", ".join(
-                f"{p.get('key')} v{p.get('version')} (живых {p.get('openInstances', 0)})"
+                f"{p.get('key')} v{p.get('version')} (live {p.get('openInstances', 0)})"
                 for p in processes
             )
             raise PackageError(
-                f"Calendar/{key}: calendar_in_use — календарь нужен процессам: {names or '—'}"
-                f" (всего {details.get('total', len(processes))}); выведите их или дождитесь, "
-                "пока доживут экземпляры"
+                f"Calendar/{key}: calendar_in_use — the calendar is used by processes: "
+                f"{names or '—'} (total {details.get('total', len(processes))}); "
+                "retire them or wait until their instances complete"
             ) from error
         raise
     item: dict[str, Any] = {
@@ -492,12 +507,12 @@ def _retire_core(target: Target, kind: str, key: str, retiring: set[str]) -> dic
         item["openInstances"] = opened
         item["byVersion"] = list(answer.get("byVersion") or [])
         item["detail"] = (
-            f"новые экземпляры не стартуют, живые доживают: {opened}"
+            f"new instances do not start, live ones run to completion: {opened}"
             if opened
-            else "новые экземпляры не стартуют, живых нет"
+            else "new instances do not start, no live ones"
         )
     else:
-        item["detail"] = "новые версии процессов на календарь не сошлются"
+        item["detail"] = "new process versions will not reference the calendar"
     return item
 
 
@@ -553,22 +568,24 @@ def prepare(
     installation = sources.installation
     errors, warnings = check(installation, env=dict(env))
     if errors:
-        raise PackageError("пакеты не прошли проверку:\n  " + "\n  ".join(errors))
+        raise PackageError("packages failed the check:\n  " + "\n  ".join(errors))
     version = core_version(target)
     found, engine_warnings = engines_problems(installation, version)
     if found:
         raise PackageError(
-            "версия ядра стенда вне совместимости пакетов — план не строится:\n  "
+            "the stand's core version is outside package compatibility — the plan is not built:\n  "
             + "\n  ".join(found)
         )
     variables = variable_values(installation, env)
     problems = variable_problems(installation, variables, target)
     if problems:
-        raise PackageError("переменные установки не подходят стенду:\n  " + "\n  ".join(problems))
+        raise PackageError(
+            "installation variables do not fit the stand:\n  " + "\n  ".join(problems)
+        )
     if needs_notify(installation) and target.notify is None:
         raise PackageError(
-            "в установке есть правила уведомлений — нужен сервис уведомлений "
-            "(NOTIFICATION_SERVICE_URL и токен audience notification-service)"
+            "the installation has notification rules — a notification service is needed "
+            "(NOTIFICATION_SERVICE_URL and a token with audience notification-service)"
         )
     return Prepared(sources, version, variables, warnings + engine_warnings)
 
@@ -634,7 +651,7 @@ def plan(
         overwrite_console=overwrite_console,
     )
     for warning in warnings:
-        log(f"предупреждение: {warning.strip()}")
+        log(f"warning: {warning.strip()}")
     document: dict[str, Any] = {
         "format": PLAN_FORMAT,
         "server": target.server.rstrip("/"),
@@ -658,7 +675,7 @@ def plan(
         if section["kind"] == "core" and not print_plan(section["plan"], log=lambda _m: None):
             clean = False
     if not clean:
-        raise PackageError("в плане ядра ошибки — план не сохранён, применять его нельзя")
+        raise PackageError("the core plan has errors — the plan is not saved and cannot be applied")
     if out is not None:
         out.write_text(json.dumps(document, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     return document
@@ -679,30 +696,30 @@ def read_plan(path: Path) -> dict[str, Any]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
-        raise PackageError(f"{path}: не файл плана: {error}") from error
+        raise PackageError(f"{path}: not a plan file: {error}") from error
     verify_document(document, str(path))
     result: dict[str, Any] = document
     return result
 
 
-def verify_document(document: Any, where: str = "план") -> None:
+def verify_document(document: Any, where: str = "plan") -> None:
     """Форма package-sdk.plan/v1 и planHash: правленый план отвергается."""
     if not isinstance(document, dict) or document.get("format") != PLAN_FORMAT:
-        raise PackageError(f"{where}: не план {PLAN_FORMAT}")
+        raise PackageError(f"{where}: not a {PLAN_FORMAT} plan")
     problems = schema_module.errors(schema_module.PLAN, document)
     if problems:
-        raise PackageError(f"{where}: не план {PLAN_FORMAT}: {problems[0]}")
+        raise PackageError(f"{where}: not a {PLAN_FORMAT} plan: {problems[0]}")
     kinds = [section["kind"] for section in document["sections"]]
     expected = ["catalog", *(["core"] * kinds.count("core")), *SECTIONS[2:]]
     if kinds != expected:
         raise PackageError(
-            f"{where}: секции плана {kinds} — нужны {', '.join(SECTIONS)} в этом порядке "
-            "(core — по пакету с процессами)"
+            f"{where}: plan sections {kinds} — expected {', '.join(SECTIONS)} in this order "
+            "(core — one per package with processes)"
         )
     if document_hash(document) != document.get("planHash"):
         raise PackageError(
-            f"{where}: план правили после построения (planHash не сходится) — постройте план "
-            "заново: package-sdk plan … --out"
+            f"{where}: the plan was edited after it was built (planHash does not match) — "
+            "build the plan again: package-sdk plan … --out"
         )
 
 
@@ -720,7 +737,10 @@ _MARKS = {
 
 def _line(change: Mapping[str, Any]) -> str:
     ref = f"{change.get('kind')}/{change.get('key')}"
-    if change.get("version") is not None and change.get("kind") in ("Skill", "KnowledgePack"):
+    if change.get("version") is not None and change.get("kind") in (
+        *VERSIONED_REF_KINDS,
+        "KnowledgePack",
+    ):
         ref += f"@{change['version']}"
     owner = f" ({change['package']})" if change.get("package") else ""
     fields = f" [{', '.join(change['fields'])}]" if change.get("fields") else ""
@@ -728,6 +748,20 @@ def _line(change: Mapping[str, Any]) -> str:
         f"  {_MARKS.get(str(change.get('operation')), '?')} {ref}{owner}: "
         f"{change.get('detail') or change.get('operation')}{fields}"
     )
+
+
+def _lines_by_kind(changes: list[Mapping[str, Any]]) -> list[str]:
+    """Изменения секции по видам: перед каждым видом — его заголовок ``[Kind]``, так что вид
+    (например ConnectionType) читается в плане отдельным разделом. Порядок изменений —
+    порядок применения, он не меняется."""
+    lines: list[str] = []
+    current: Any = None
+    for change in changes:
+        if change.get("kind") != current:
+            current = change.get("kind")
+            lines.append(f"  [{current}]")
+        lines.append(_line(change))
+    return lines
 
 
 def overwrites_console(document: Mapping[str, Any]) -> bool:
@@ -788,18 +822,18 @@ def console_lines(document: Mapping[str, Any]) -> list[str]:
     kept = [e for e in edits if e.kept]
     if overwrite:
         lines.append(
-            "правки консоли: перезаписываются (overwriteConsole)"
-            + ("" if overwritten else " — в объектах плана правок консоли нет")
+            "console edits: overwritten (overwriteConsole)"
+            + ("" if overwritten else " — the plan's objects have no console edits")
         )
     else:
-        lines.append("правки консоли: сохраняются (перезаписать — plan --overwrite-console)")
+        lines.append("console edits: kept (to overwrite — plan --overwrite-console)")
     if overwritten:
-        lines.append("  будут перезаписаны:")
+        lines.append("  will be overwritten:")
         lines.extend(
             f"  ! {e.kind}/{e.key} ({e.package}): {', '.join(e.overwritten)}" for e in overwritten
         )
     if kept:
-        lines.append("  останутся как в консоли:")
+        lines.append("  stay as in the console:")
         lines.extend(f"  = {e.kind}/{e.key} ({e.package}): {', '.join(e.kept)}" for e in kept)
     return lines
 
@@ -832,38 +866,40 @@ def format_plan(document: Mapping[str, Any]) -> list[str]:
     """План человеку: по секциям, в порядке применения."""
     engines = ", ".join(f"{k} {v}" for k, v in (document.get("engines") or {}).items())
     lines = [
-        f"план установки {document.get('installation') or ''} для {document.get('server')}"
+        f"installation plan {document.get('installation') or ''} for {document.get('server')}"
         f" ({engines}): {document.get('planHash')}"
     ]
     titles = {
-        "catalog": "каталог",
-        "knowledge": "онтологии",
-        "notification-rules": "правила уведомлений",
-        "retire": "вывод из оборота",
+        "catalog": "catalog",
+        "knowledge": "ontologies",
+        "notification-rules": "notification rules",
+        "retire": "retirement",
     }
     for section in document.get("sections") or []:
         kind = section.get("kind")
         if kind == "core":
-            lines.append(f"ядро, пакет {section.get('package')}:")
+            lines.append(f"core, package {section.get('package')}:")
             print_plan(section.get("plan") or {}, log=lambda line: lines.append("  " + line))
             continue
         items: list[str] = []
-        if kind in ("catalog", "notification-rules"):
+        if kind == "catalog":
+            items = _lines_by_kind(section.get("changes") or [])
+        elif kind == "notification-rules":
             items = [_line(c) for c in section.get("changes") or []]
         elif kind == "retire":
-            items = [_line(c) for c in section.get("items") or []]
+            items = _lines_by_kind(section.get("items") or [])
         elif kind == "knowledge":
             items = [_line(c) for c in section.get("register") or []]
             for entry in section.get("enable") or []:
-                strict = ", строгий режим" if entry.get("strict") else ""
+                strict = ", strict mode" if entry.get("strict") else ""
                 items.append(
-                    f"  ~ workspace {entry.get('workspace')}: онтологии → "
+                    f"  ~ workspace {entry.get('workspace')}: ontologies → "
                     f"{', '.join(entry.get('packs') or []) or '—'}{strict} "
-                    f"(сейчас: {', '.join(entry.get('current') or []) or '—'})"
+                    f"(now: {', '.join(entry.get('current') or []) or '—'})"
                 )
-        lines.append(f"{titles.get(str(kind), kind)}:" + ("" if items else " без изменений"))
+        lines.append(f"{titles.get(str(kind), kind)}:" + ("" if items else " no changes"))
         lines.extend(items)
     lines.extend(console_lines(document))
     count = count_changes(document)
-    lines.append(f"итого изменений: {count}" if count else "изменений нет")
+    lines.append(f"total changes: {count}" if count else "no changes")
     return lines

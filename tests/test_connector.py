@@ -250,11 +250,11 @@ def test_principal_lost_between_cycles_restarts(feed: Any, tmp_path: Path) -> No
 
 def test_load_entrypoint(feed: Any) -> None:
     assert feed.entrypoint == "sample_feed.observer:observe"
-    with pytest.raises(ValueError, match="модуля нет в образе"):
+    with pytest.raises(ValueError, match="module not in the image"):
         load_entrypoint("no_such_module:observe")
-    with pytest.raises(ValueError, match="не наблюдатель"):
+    with pytest.raises(ValueError, match="not an observer"):
         load_entrypoint("sample_feed.observer:run")
-    with pytest.raises(ValueError, match="модуль:функция"):
+    with pytest.raises(ValueError, match="module:function"):
         load_entrypoint("sample_feed.observer")
 
 

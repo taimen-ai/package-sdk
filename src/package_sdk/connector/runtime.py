@@ -318,7 +318,7 @@ class ObserveContext:
     def snapshot(self, snapshot: Snapshot) -> Mapping[str, Any]:
         """Снимок знаний в ядро (нужен workspace агента); ответ — счётчики сверки памяти."""
         if not self.workspace_id:
-            raise ValueError("снимку знаний нужен workspace агента (work.workspace)")
+            raise ValueError("a knowledge snapshot needs the agent's workspace (work.workspace)")
         answer = self._publish(
             _snapshot(self._core, self, snapshot),
             f"snapshot:{snapshot.source}:{snapshot.snapshot_id}",
@@ -328,9 +328,9 @@ class ObserveContext:
     def document(self, document: Document) -> Mapping[str, Any]:
         """Артефакт в ядро; ответ — артефакт (``id``) для ссылки из наблюдения."""
         if (document.content is None) == (document.uri is None):
-            raise ValueError("у документа ровно одно из content и uri")
+            raise ValueError("a document has exactly one of content and uri")
         if document.content is not None and not document.media_type:
-            raise ValueError("у документа с содержимым нужен media_type")
+            raise ValueError("a document with content needs media_type")
         self.document_key(document)  # неверный ключ — сбой цикла, а не повтор
         answer = self._publish(
             _document(self._core, self, document), f"document:{document.type}:{document.name}"
@@ -393,7 +393,8 @@ def document_key(
     if item.idempotency_key:
         if len(item.idempotency_key) > IDEMPOTENCY_KEY_MAX:
             raise ValueError(
-                f"idempotency_key длиннее {IDEMPOTENCY_KEY_MAX} символов — ядро его отвергнет"
+                f"idempotency_key is longer than {IDEMPOTENCY_KEY_MAX} characters — "
+                "the core will reject it"
             )
         return item.idempotency_key
     body = item.content if item.content is not None else str(item.uri).encode("utf-8")
@@ -635,8 +636,8 @@ class Runner:
                 SECRET_MISSING,
                 f"secret-missing:{missing.name}",
                 now.date().isoformat(),
-                f"Нет секрета узла {missing.name}: наблюдатель {self.function.kind} "
-                "не опрашивает источник",
+                f"No agent node secret {missing.name}: observer {self.function.kind} "
+                "does not poll the source",
                 {"secret": missing.name, "agent": revision.key},
             )
             self._save(stored)
@@ -654,9 +655,9 @@ class Runner:
                 CYCLE_FAILED,
                 "cycle-failed",
                 now.strftime("%Y-%m-%dT%H"),
-                f"Секрет узла {rejected.name} отвергнут ({rejected.code}"
-                f"{': ' + rejected.reason if rejected.reason else ''}): наблюдатель "
-                f"{self.function.kind} не опрашивает источник",
+                f"Agent node secret {rejected.name} rejected ({rejected.code}"
+                f"{': ' + rejected.reason if rejected.reason else ''}): observer "
+                f"{self.function.kind} does not poll the source",
                 {
                     "error": "SecretRejected",
                     "secret": rejected.name,
@@ -676,7 +677,7 @@ class Runner:
                 CYCLE_FAILED,
                 "cycle-failed",
                 now.strftime("%Y-%m-%dT%H"),
-                f"Цикл наблюдателя {self.function.kind} завершился ошибкой {type(exc).__name__}",
+                f"Observer {self.function.kind} cycle failed with {type(exc).__name__}",
                 {"error": type(exc).__name__, "agent": revision.key, "revision": revision.revision},
             )
             self._save(stored)
@@ -766,16 +767,16 @@ def load_entrypoint(entrypoint: str) -> Registered:
     """«модуль:функция» образа → наблюдатель; не найден или не помечен — ValueError."""
     module_name, _, attribute = entrypoint.partition(":")
     if not module_name or not attribute:
-        raise ValueError(f"entrypoint {entrypoint!r}: нужен вид модуль:функция")
+        raise ValueError(f"entrypoint {entrypoint!r}: expected the form module:function")
     try:
         module = importlib.import_module(module_name)
     except ImportError as exc:
-        raise ValueError(f"entrypoint {entrypoint!r}: модуля нет в образе ({exc})") from exc
+        raise ValueError(f"entrypoint {entrypoint!r}: module not in the image ({exc})") from exc
     function = getattr(module, attribute, None)
     if not isinstance(function, Registered):
-        raise ValueError(f"entrypoint {entrypoint!r}: не наблюдатель (@observer)")
+        raise ValueError(f"entrypoint {entrypoint!r}: not an observer (@observer)")
     if function.entrypoint != entrypoint:
         raise ValueError(
-            f"entrypoint {entrypoint!r}: наблюдатель объявлен как {function.entrypoint!r}"
+            f"entrypoint {entrypoint!r}: the observer is declared as {function.entrypoint!r}"
         )
     return function

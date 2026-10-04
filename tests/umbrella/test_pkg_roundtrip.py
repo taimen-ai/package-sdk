@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 import shutil
 from pathlib import Path
 
@@ -261,6 +262,23 @@ def test_operations_refuse_bad_input_machine_readably(tmp_path, capsys):
         code == 1
         and json.loads(capsys.readouterr().out)["error"]["code"] == "decision_column_unknown"
     )
+    code = pkg.main(
+        [
+            "--json",
+            "add-decision-row",
+            "--file",
+            str(path),
+            "--table",
+            "approval-level",
+            "--row",
+            "{when: {nmck: '-'}, then: {approvers: 1}}",
+            "--index",
+            "99",
+        ]
+    )
+    error = json.loads(capsys.readouterr().out)["error"]
+    assert code == 1 and error["code"] == "index_out_of_range"
+    assert re.fullmatch(r"--index 99: the table has \d+ rows", error["message"])
     # правка, которую не пропускает схема, не записывается
     quorum = "spec.stages[price].steps[approve-price].approve.quorum"
     code = pkg.main(

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import posixpath
 import py_compile
 import re
 import shutil
@@ -15,7 +16,7 @@ from typing import Any
 import pytest
 import yaml
 
-from package_sdk import cli, manifest, sandbox, scaffold
+from package_sdk import cli, layout, manifest, sandbox, scaffold
 from package_sdk.check import CORE_MISSING, check
 from package_sdk.model import CATALOG_KINDS, FOLDERS, PackageError, resolve_targets
 
@@ -106,7 +107,7 @@ def test_object_carries_the_schema_link_and_hints(tmp_path: Path) -> None:
     assert "# Optional fields of spec" in text
     # подсказки — из описаний схемы: поле, которого нет в заготовке, с его описанием
     assert re.search(r"^#   execution", text, re.M)
-    assert re.search(r"^#   completionSchema: Работа после завершения задачи", text, re.M)
+    assert re.search(r"^#   completionSchema: Work after the task completes", text, re.M)
 
 
 def test_integration_and_image(tmp_path: Path) -> None:
@@ -131,19 +132,19 @@ def test_integration_and_image(tmp_path: Path) -> None:
 def test_refusals(tmp_path: Path) -> None:
     directory = tmp_path / "demo"
     scaffold.init(directory)
-    with pytest.raises(PackageError, match="уже есть"):
+    with pytest.raises(PackageError, match="already exist"):
         scaffold.init(directory)
-    with pytest.raises(PackageError, match="уже есть"):
+    with pytest.raises(PackageError, match="already exist"):
         scaffold.add(directory, "Process", "demo")
-    with pytest.raises(PackageError, match="неизвестен"):
+    with pytest.raises(PackageError, match="unknown kind"):
         scaffold.add(directory, "Widget", "x")
-    with pytest.raises(PackageError, match="строчные"):
+    with pytest.raises(PackageError, match="lowercase Latin letters"):
         scaffold.add(directory, "Role", "Bad Key")
-    with pytest.raises(PackageError, match=r"нет package\.yaml"):
+    with pytest.raises(PackageError, match=r"no package\.yaml"):
         scaffold.add(tmp_path / "empty", "Role", "x")
     with pytest.raises(PackageError, match="--integration"):
         scaffold.init(tmp_path / "other", image=True)
-    with pytest.raises(PackageError, match="ключ пакета"):
+    with pytest.raises(PackageError, match="package key"):
         scaffold.init(tmp_path / "Bad_Name")
 
 
@@ -170,9 +171,9 @@ def test_cli_init_add_check_sandbox(
     assert cli.main(["init", "flow"]) == 0
     assert cli.main(["add", "rule", "on-request", "--package", "flow"]) == 0
     out = capsys.readouterr().out
-    assert "создан flow/package.yaml" in out and "создан flow/rules/on-request.yaml" in out
+    assert "created flow/package.yaml" in out and "created flow/rules/on-request.yaml" in out
     assert cli.main(["check", "--package", "flow"]) == 0
-    assert "ok: пакетов 1" in capsys.readouterr().out
+    assert "ok: packages 1" in capsys.readouterr().out
     assert cli.main(["sandbox", "flow"]) == 0
     assert "ok (passed)" in capsys.readouterr().out
 
@@ -237,7 +238,7 @@ def test_templates_never_install_the_sdk_from_the_public_index(tmp_path: Path) -
     assert (directory / ".dockerignore").read_text(encoding="utf-8").splitlines()[1] == "**"
     workflow = (directory / ".github" / "workflows" / "package.yml").read_text(encoding="utf-8")
     # SDK — из клона на закреплённой ревизии рядом с соседями, не по имени из индекса
-    assert 'uv tool install "./package-sdk[' in workflow
+    assert f'uv tool install "./{layout.current().path("package-sdk")}[' in workflow
     assert not re.search(r"(pip install|uvx --from|uv tool install) \"?package-sdk", workflow)
     assert "::error::not set:" in workflow
     # actions закреплены по SHA
@@ -245,8 +246,19 @@ def test_templates_never_install_the_sdk_from_the_public_index(tmp_path: Path) -
     assert re.search(r"astral-sh/setup-uv@[0-9a-f]{40}", workflow)
 
 
+def _component_of(source: str, path: str) -> str | None:
+    """Компонент раскладки установки, в каталог которого ведёт path-источник ``path``
+    компонента ``source`` (``../../services/control-plane/client`` → ``control-plane``)."""
+    current = layout.current()
+    target = posixpath.normpath(posixpath.join(current.path(source), path))
+    for name, where in current.components.items():
+        if target == where or target.startswith(where + "/"):
+            return name
+    return None
+
+
 def _path_neighbours(pyproject: Path, extras: set[str]) -> set[str]:
-    """Соседние каталоги, которые нужны дополнениям: path-источники [tool.uv.sources]."""
+    """Компоненты-соседи, которые нужны дополнениям: path-источники [tool.uv.sources]."""
     data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     optional = data["project"].get("optional-dependencies") or {}
     sources = (data.get("tool") or {}).get("uv", {}).get("sources") or {}
@@ -265,7 +277,9 @@ def _path_neighbours(pyproject: Path, extras: set[str]) -> set[str]:
     for name in names:
         path = (sources.get(name) or {}).get("path")
         if path and path.startswith("../"):
-            neighbours.add(path.removeprefix("../").split("/", 1)[0])
+            component = _component_of("package-sdk", path)
+            assert component, f"{name}: {path} leads to no component of the layout manifest"
+            neighbours.add(component)
     return neighbours
 
 
@@ -295,7 +309,8 @@ def test_workflow_for_a_package_with_integration_like_the_claims_example(
     runs = [step.get("run", "") for step in job["steps"]]
     script = "\n".join(runs)
 
-    install = re.search(r'uv tool install "\./package-sdk\[([^\]]+)\]"(.*)', script)
+    sdk_path = re.escape(layout.current().path("package-sdk"))
+    install = re.search(rf'uv tool install "\./{sdk_path}\[([^\]]+)\]"(.*)', script)
     assert install is not None
     extras = {e.strip() for e in install.group(1).split(",")}
     assert {"sandbox", "skills", "connector"} <= extras
@@ -303,15 +318,25 @@ def test_workflow_for_a_package_with_integration_like_the_claims_example(
 
     # соседи, которых требуют дополнения: path-зависимости SDK и ядра (platform-auth-sdk)
     needed = _path_neighbours(REPO / "pyproject.toml", extras)
-    core = REPO.parent / "control-plane" / "pyproject.toml"
-    if "control-plane" in needed and core.is_file():
-        core_data = tomllib.loads(core.read_text(encoding="utf-8"))
-        for source in ((core_data.get("tool") or {}).get("uv", {}).get("sources") or {}).values():
-            if str(source.get("path", "")).startswith("../"):
-                needed.add(source["path"].removeprefix("../").split("/", 1)[0])
-    else:
-        needed.add("platform-auth-sdk")
-    cloned = set(re.findall(r'^\s*clone ([a-z-]+) "\$([A-Z_]+)"$', script, re.M))
+    assert "control-plane" in needed
+    # соседи ядра — из его pyproject.toml; ядра рядом нет — явный провал, а не догадка
+    # (TAI-ADR-0064 правило 4): extra sandbox ставит его из этого каталога
+    core = layout.neighbour("control-plane") / "pyproject.toml"
+    assert core.is_file(), f"no {core}: the core is not next to the SDK in the layout manifest"
+    core_data = tomllib.loads(core.read_text(encoding="utf-8"))
+    for source in ((core_data.get("tool") or {}).get("uv", {}).get("sources") or {}).values():
+        if str(source.get("path", "")).startswith("../"):
+            component = _component_of("control-plane", source["path"])
+            assert component, f"{source['path']} of the core leads to no component of the layout"
+            needed.add(component)
+    assert "platform-auth-sdk" in needed
+    # clone <имя> "$REF" в плоской раскладке, clone <имя> <путь> "$REF" — с сегментами
+    clones = re.findall(
+        r'^\s*clone ([a-z-]+)(?: ([a-z0-9][a-z0-9/._-]*))? "\$([A-Z_]+)"$', script, re.M
+    )
+    for name, path, _var in clones:
+        assert (path or name) == layout.current().path(name)
+    cloned = {(name, variable) for name, _path, variable in clones}
     assert {name for name, _var in cloned} == needed | {"package-sdk"}
 
     # у каждого компонента одна переменная ревизии, заданная один раз в env job и больше
@@ -354,7 +379,7 @@ def test_workflow_without_integration_and_database() -> None:
     assert "services" not in job and "# services:" in text
     assert "PACKAGE_SDK_SANDBOX_DATABASE_URL" not in job["env"]
     assert "SKILL_SDK_REF" not in job["env"] and "clone skill-sdk" not in text
-    assert 'uv tool install "./package-sdk[sandbox]"\n' in text
+    assert f'uv tool install "./{layout.current().path("package-sdk")}[sandbox]"\n' in text
 
 
 def test_workflow_pins_the_revisions_of_the_installation(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -422,7 +447,7 @@ def test_add_leaves_an_edited_workflow_alone(tmp_path: Path) -> None:
     # пакету теперь нужна база, а блок правили руками: add не молчит
     assert len(result.warnings) == 1
     assert ".github/workflows/package.yml" in result.warnings[0]
-    assert "включите базу PostgreSQL в workflow вручную" in result.warnings[0]
+    assert "enable the PostgreSQL database in the workflow manually" in result.warnings[0]
 
 
 def test_add_does_not_warn_when_the_author_enabled_the_database_by_hand(tmp_path: Path) -> None:
@@ -457,8 +482,8 @@ def test_cli_add_prints_the_database_warning(
     capsys.readouterr()
     assert cli.main(["add", "rule", "on-request", "--package", "flow"]) == 0
     out = capsys.readouterr().out
-    assert "предупреждение: flow/.github/workflows/package.yml: " in out
-    assert "включите базу PostgreSQL в workflow вручную" in out
+    assert "warning: flow/.github/workflows/package.yml: " in out
+    assert "enable the PostgreSQL database in the workflow manually" in out
 
 
 def test_init_detects_the_database_and_takes_the_flag(tmp_path: Path) -> None:
@@ -482,7 +507,7 @@ def test_cli_init_database_flag_and_add_reports_the_workflow(
     monkeypatch.chdir(tmp_path)
     assert cli.main(["init", "flow"]) == 0
     assert cli.main(["add", "rule", "on-request", "--package", "flow"]) == 0
-    assert "изменён flow/.github/workflows/package.yml" in capsys.readouterr().out
+    assert "changed flow/.github/workflows/package.yml" in capsys.readouterr().out
     assert cli.main(["init", "other", "--database"]) == 0
     assert "services" in yaml.safe_load(_workflow_of(tmp_path / "other"))["jobs"]["check"]
 
@@ -602,7 +627,7 @@ def test_license_is_not_assumed(tmp_path: Path) -> None:
 def test_long_process_key_is_refused(tmp_path: Path) -> None:
     directory = tmp_path / "demo"
     scaffold.init(directory)
-    with pytest.raises(PackageError, match="длиннее"):
+    with pytest.raises(PackageError, match="is longer than"):
         scaffold.add(directory, "process", "p" * 56)
     scaffold.add(directory, "process", "p" * scaffold.PROCESS_KEY_MAX)
     assert _check(directory)[0] == []

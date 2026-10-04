@@ -370,7 +370,7 @@ def test_apply_only_by_the_hash_of_the_shown_plan(project: Path, stand: FakeCore
     applied = call("pkg_apply", {"plan_file": str(plan_file), "plan_hash": shown["planHash"]})
     assert applied["planHash"] == shown["planHash"], applied
     assert applied["applied"]["core"] and stand.writes
-    assert any(line.startswith("применён план") for line in applied["log"])
+    assert any(line.startswith("applied plan") for line in applied["log"])
 
     assert plan_of(project)["changes"] == 0
 
@@ -513,6 +513,19 @@ def test_plan_does_not_overwrite_files_that_are_not_plans(project: Path, stand: 
     kept = call("pkg_plan", {"path": "packages/acme-claims", "out": ".package-sdk/claims.json"})
     assert kept["error"] == "install_file_exists"
     assert foreign.read_text(encoding="utf-8") == "# своя установка\n"
+
+
+def test_plan_overwrites_install_written_before_english_output(
+    project: Path, stand: FakeCore
+) -> None:
+    # установку с заголовком прежних версий (до TAI-ADR-0060) сервер узнаёт своей
+    work = project / ".package-sdk"
+    work.mkdir()
+    previous = work / "claims.install.yaml"
+    previous.write_text(author.GENERATED_BEFORE + "kind: Installation\n", encoding="utf-8")
+    shown = call("pkg_plan", {"path": "packages/acme-claims", "out": ".package-sdk/claims.json"})
+    assert "error" not in shown, shown
+    assert previous.read_text(encoding="utf-8").startswith(author.GENERATED)
 
 
 def test_work_directory_linked_outside_the_root_is_refused(

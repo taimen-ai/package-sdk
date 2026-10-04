@@ -23,7 +23,7 @@ from typing import Any
 import pytest
 import yaml
 
-from package_sdk import commands, edit, model
+from package_sdk import commands, edit, layout, model, screens
 from package_sdk import schema as schema_module
 
 REPO = Path(__file__).resolve().parents[1]
@@ -51,6 +51,7 @@ PACKAGE_SKILLS = {
     "author-integration",
     "author-notification",
     "release-package",
+    "author-screens",
 }
 SKILLS = PROCESS_AUTHOR_SKILLS | PACKAGE_SKILLS
 # Скиллы, которые зовут pkg_apply: у каждого правило согласия это называет прямо.
@@ -226,6 +227,15 @@ def test_package_skills_cover_the_whole_cycle() -> None:
         ),
         "author-notification": ("NotificationRule", "recipient", "dedupKeyTemplate", "close"),
         "release-package": ("SemVer", "package-sdk lock", "pkg_plan", "pkg_apply", "тег"),
+        "author-screens": (
+            "View",
+            "Component",
+            "locales",
+            "defaultLocale",
+            "i18n/<locale>.yaml",
+            "schema/v1/view.schema.json",
+            "tests/fixtures/screens/packages/",
+        ),
     }
     for name, needles in expected.items():
         text = skill_files()[name].read_text(encoding="utf-8")
@@ -319,7 +329,7 @@ def test_hook_asks_human_with_plan_hash(tmp_path: Path) -> None:
     reason = decision["permissionDecisionReason"]
     assert HASH in reason and str(plan) in reason and "https://cp.example.com" in reason
     # число изменений по секциям — как count_changes SDK
-    assert "каталог 2, ядро 1, онтологии 0, уведомления 0, вывод из оборота 1" in reason
+    assert "catalog 2, core 1, ontologies 0, notification rules 0, retirement 1" in reason
 
 
 def test_hook_shows_whether_console_edits_are_overwritten(tmp_path: Path) -> None:
@@ -336,7 +346,7 @@ def test_hook_shows_whether_console_edits_are_overwritten(tmp_path: Path) -> Non
         "permissionDecisionReason"
     ]
     assert (
-        "ПРАВКИ КОНСОЛИ БУДУТ ПЕРЕЗАПИСАНЫ (overwriteConsole: да): TaskType/t (displayName)"
+        "CONSOLE EDITS WILL BE OVERWRITTEN (overwriteConsole: yes): TaskType/t (displayName)"
         in reason
     )
     # без флага (и в плане прежнего формата без поля) — правки сохраняются
@@ -345,10 +355,7 @@ def test_hook_shows_whether_console_edits_are_overwritten(tmp_path: Path) -> Non
             {"plan_file": str(written(tmp_path, document, "plain.json")), "plan_hash": HASH}
         )
         assert plain["permissionDecision"] == "ask"
-        assert (
-            "правки консоли сохраняются (overwriteConsole: нет)"
-            in plain["permissionDecisionReason"]
-        )
+        assert "console edits are kept (overwriteConsole: no)" in plain["permissionDecisionReason"]
 
 
 def test_hook_denies_another_plan_and_what_it_cannot_show(tmp_path: Path) -> None:
@@ -416,7 +423,7 @@ def test_mentioned_author_tools_exist_in_the_sdk_server() -> None:
 
 def core_server_source() -> str | None:
     """server.py MCP-сервера ядра: пакет control_plane_mcp из окружения или сосед
-    ../control-plane плоской раскладки."""
+    control-plane по манифесту раскладки установки."""
     candidates: list[Path] = []
     try:
         spec = importlib.util.find_spec("control_plane_mcp")
@@ -424,7 +431,7 @@ def core_server_source() -> str | None:
         spec = None
     if spec is not None and spec.submodule_search_locations:
         candidates += [Path(p) / "server.py" for p in spec.submodule_search_locations]
-    candidates.append(REPO.parent / "control-plane" / "src" / "control_plane_mcp" / "server.py")
+    candidates.append(layout.neighbour("control-plane") / "src" / "control_plane_mcp" / "server.py")
     for path in candidates:
         if path.is_file():
             return path.read_text(encoding="utf-8")
@@ -474,9 +481,17 @@ def test_mentioned_commands_exist() -> None:
         "rename",
         "set",
     } <= known["package-sdk edit"]
-    assert {"check", "plan", "apply", "lock", "describe", "docs", "init", "add"} <= known[
-        "package-sdk"
-    ]
+    assert {
+        "check",
+        "plan",
+        "apply",
+        "lock",
+        "describe",
+        "docs",
+        "init",
+        "add",
+        "workflow",
+    } <= known["package-sdk"]
     for path in plugin_files():
         # команды — в коде: блоки ``` и `…`, а не слова прозы
         source = path.read_text(encoding="utf-8")
@@ -560,7 +575,7 @@ def test_etalon_processes_follow_the_schema() -> None:
 
 
 def test_yaml_examples_follow_schemas() -> None:
-    checked = {"test": 0, "process": 0, "object": 0}
+    checked = {"test": 0, "process": 0, "object": 0, "screen": 0}
     for name, path in skill_files().items():
         for block in re.findall(r"```yaml\n(.*?)```", path.read_text(encoding="utf-8"), re.S):
             data = yaml.load(block, Loader=model._yaml12_loader())
@@ -572,8 +587,22 @@ def test_yaml_examples_follow_schemas() -> None:
             elif "kind" in data and "apiVersion" in data and "spec" in data:
                 if data["kind"] == "Process" and "start" not in data["spec"]:
                     continue  # фрагмент заголовка процесса, не целый объект
-                errors = schema_module.errors(schema_module.OBJECT, data)
-                checked["object"] += 1
+                if data["kind"] in schema_module.SCREEN_DEFINITIONS:
+                    # вид и компонент — схема экранов ядра (view.schema.json)
+                    validator = schema_module.screen_validator(data["kind"])
+                    errors = [e.message for e in validator.iter_errors(data["spec"])]
+                    checked["screen"] += 1
+                else:
+                    if data["kind"] == "Package":
+                        # языки экранов проверяет check экранов, а не схема ядра (как check)
+                        spec = {
+                            k: v
+                            for k, v in data["spec"].items()
+                            if k not in (screens.LOCALES_FIELD, screens.DEFAULT_LOCALE_FIELD)
+                        }
+                        data = {**data, "spec": spec}
+                    errors = schema_module.errors(schema_module.OBJECT, data)
+                    checked["object"] += 1
             elif isinstance(data.get("spec"), dict) and "start" in data["spec"]:
                 document = {
                     "apiVersion": model.API_VERSION,

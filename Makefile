@@ -1,11 +1,11 @@
-# Цели, которые зовут CI (.github/workflows/ci.yml) и проверки исполнителя
-# (.agents/runner.yaml). Соседи по плоской раскладке — path-зависимости экстр:
-# ../control-plane (sandbox, connector), ../skill-sdk (skills) и
-# ../platform-auth-sdk (зависимость ядра).
+# Targets called by CI (.github/workflows/ci.yml) and by the executor's checks
+# (.agents/runner.yaml). Neighbours in the umbrella layout (TAI-ADR-0064) are path
+# dependencies of extras: ../../services/control-plane (sandbox, connector),
+# ../skill-sdk (skills) and ../platform-auth-sdk (a dependency of the core).
 .PHONY: install lint fmt typecheck test check
 
-# Со всеми экстрами: проверки и песочница идут кодом ядра, без них часть тестов
-# пропускается.
+# With all extras: checks and the sandbox run the core's code; without them some tests
+# are skipped.
 install:
 	uv sync --frozen --all-extras
 
@@ -20,9 +20,9 @@ fmt:
 typecheck:
 	uv run --all-extras mypy
 
-# Ядро-сосед здесь всегда есть (все экстры): сверка поддельного ядра и снимков ответов с
-# моделями control_plane.api.v1.schemas без него — провал, а не молчаливый пропуск;
-# пропуски с причинами видны в -rs (TASK-001186).
+# The neighbouring core is always present here (all extras): without it, checking the fake
+# core and the response snapshots against the control_plane.api.v1.schemas models fails
+# instead of being silently skipped; skips and their reasons show in -rs (TASK-001186).
 test:
 	PACKAGE_SDK_REQUIRE_CORE_CONTRACT=1 uv run --all-extras pytest -q -rs
 

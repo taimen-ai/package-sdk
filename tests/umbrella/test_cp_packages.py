@@ -20,28 +20,21 @@ from typing import Any
 import pytest
 import yaml
 
-from package_sdk import install
+from package_sdk import install, layout
 from package_sdk.install.plan import Target
+from package_sdk.model import FOLDERS, IDENTITY
 from tests.umbrella._shim import FIXTURES, cp, settled
 from tests.umbrella._shim import UMBRELLA as ROOT
 
 # Снимок OpenAPI ядра: POST /packages:record и его схемы (control-plane, CP-ADR-0074 §11)
 OPENAPI_SNAPSHOT = FIXTURES / "control-plane-openapi-packages-record.json"
-# Ядро рядом с компонентом (path-зависимость ../control-plane): его RecordedKind сверяется
+# Ядро рядом с компонентом (по манифесту раскладки установки): его RecordedKind сверяется
 # с запасным перечнем видов
-CORE_SOURCE = Path(__file__).resolve().parents[3] / "control-plane" / "src"
-# Где ядро ищет объект вида для packages:record: коллекция и поле идентичности
-RECORD_LOOKUP = {
-    "ArtifactType": ("artifact-types", "key"),
-    "TaskType": ("task-types", "key"),
-    "ProjectTemplate": ("project-templates", "key"),
-    "WorkspaceType": ("workspace-types", "key"),
-    "Role": ("roles", "slug"),
-    "Capability": ("capabilities", "name"),
-    "Skill": ("skills", "name"),
-    "WorkRule": ("rules", "key"),
-    "Agent": ("agents", "key"),
-}
+CORE_SOURCE = layout.neighbour("control-plane") / "src"
+# Где ядро ищет объект вида для packages:record: коллекция и поле идентичности — для каждого
+# вида запасного перечня (он сверен со снимком и с RecordedKind ядра), по раскладке модели.
+# Расчёт на то, что имя папки вида в FOLDERS совпадает с коллекцией API ядра
+RECORD_LOOKUP = {kind: (FOLDERS[kind], IDENTITY[kind]) for kind in cp.RECORDED_KINDS_FALLBACK}
 
 # --- фейковый Control Plane ---------------------------------------------------
 
@@ -476,7 +469,7 @@ def test_repository_packages_pass_check():
     installation = cp.resolve([d.name for d in cp.all_package_dirs()])
     errors, warnings = cp.check(installation)
     assert errors == []
-    assert not any("не импортируются" in w for w in warnings), (
+    assert not any("are not importable" in w for w in warnings), (
         "доменные валидаторы должны работать в CI"
     )
 
@@ -622,9 +615,9 @@ def test_check_rejects_duplicates_and_retiring_system_type(sandbox):
     )
     installation = cp.resolve(["selfdev"], {"TaskType": ["task", "devops"]})
     errors, _ = cp.check(installation)
-    assert any("уже объявлен" in e for e in errors)
-    assert any("системный тип task" in e for e in errors)
-    assert any("TaskType/devops одновременно" in e for e in errors)
+    assert any("is already declared" in e for e in errors)
+    assert any("the system type task cannot be retired" in e for e in errors)
+    assert any("TaskType/devops is both declared" in e for e in errors)
 
 
 def test_requires_pulls_dependencies_in_order():
@@ -634,7 +627,7 @@ def test_requires_pulls_dependencies_in_order():
 
 def test_env_substitution():
     assert cp.substitute({"a": ["${X}/api"]}, {"X": "http://svc"}) == {"a": ["http://svc/api"]}
-    with pytest.raises(cp.PackageError, match="Y не задана"):
+    with pytest.raises(cp.PackageError, match="variable Y is not set"):
         cp.substitute("${Y}", {})
     assert cp.substitute("$.task.id!", {}) == "$.task.id!"  # выражения исходов не трогаются
 
@@ -667,7 +660,7 @@ def test_apply_is_idempotent():
     assert install.count_changes(document) == 0  # повторный план пуст
     _, lines = run_apply(fake, installation)
     assert len(fake.writes) == first_writes, lines
-    assert _object_lines(lines) and all("без изменений" in line for line in _object_lines(lines))
+    assert _object_lines(lines) and all("unchanged" in line for line in _object_lines(lines))
 
 
 def test_changed_type_gets_new_version_and_old_versions_are_deprecated(sandbox):
@@ -685,7 +678,7 @@ def test_changed_type_gets_new_version_and_old_versions_are_deprecated(sandbox):
     versions = {r["version"]: r["status"] for r in fake.rows["task-types"] if r["key"] == "devops"}
     assert versions == {1: "deprecated", 2: "deprecated", 3: "active"}
     assert result["TaskType/devops"]["version"] == 3
-    assert any("изменились" in line and "description" in line for line in lines)
+    assert any("changed" in line and "description" in line for line in lines)
 
 
 def test_plan_writes_nothing():
@@ -695,10 +688,10 @@ def test_plan_writes_nothing():
     document, lines = plan_only(fake, cp.resolve(["selfdev"], {"TaskType": ["ops"]}))
     assert fake.writes == [] and fake.records == []
     devops = next(c for c in catalog_changes(document) if c["key"] == "devops")
-    assert (devops["operation"], devops["detail"]) == ("create", "новая версия (нет в tenant)")
+    assert (devops["operation"], devops["detail"]) == ("create", "new version (not in tenant)")
     (retire,) = next(s for s in document["sections"] if s["kind"] == "retire")["items"]
     assert (retire["kind"], retire["key"], retire["operation"]) == ("TaskType", "ops", "deprecate")
-    assert any("TaskType/devops (selfdev): новая версия (нет в tenant)" in line for line in lines)
+    assert any("TaskType/devops (selfdev): new version (not in tenant)" in line for line in lines)
 
 
 def test_retire_deprecates_every_active_version():
@@ -754,7 +747,7 @@ def test_mutable_kinds_patch_only_differences(sandbox):
     _, lines = run_apply(fake, cp.resolve(["demo"]))
     assert fake.writes[before:] == [("PATCH", f"/roles/{role['id']}")]
     assert fake.rows["roles"][0]["name"] == "Code reviewer"
-    assert any("описание в tenant отличается" in line for line in lines)
+    assert any("the description in tenant differs" in line for line in lines)
 
 
 def test_skill_contract_is_immutable_but_description_is_patched(sandbox):
@@ -767,7 +760,7 @@ def test_skill_contract_is_immutable_but_description_is_patched(sandbox):
     assert merge["description"] == "Слить ветку" and merge["rowVersion"] == 2
 
     _edit(path, r"timeoutSeconds: 300", "timeoutSeconds: 120")
-    with pytest.raises(cp.PackageError, match="поднимите spec.version"):
+    with pytest.raises(cp.PackageError, match="bump spec.version"):
         run_apply(fake, cp.resolve(["selfdev"]))
 
 
@@ -828,7 +821,7 @@ def test_work_rule_is_created_then_left_alone(sandbox):
     before = len(fake.writes)
     _, lines = run_apply(fake, cp.resolve(["selfdev"]))
     assert fake.writes[before:] == []
-    assert any("WorkRule/docs-drift: v1 без изменений" in line for line in lines)
+    assert any("WorkRule/docs-drift: v1 unchanged" in line for line in lines)
 
 
 def test_work_rule_change_is_patched_and_status_follows_the_file(sandbox):
@@ -857,7 +850,7 @@ def test_work_rule_workspace_cannot_move(sandbox):
     fake = FakeControlPlane()
     run_apply(fake, cp.resolve(["selfdev"]))
     moved = {**SELFDEV_ENV, "SELFDEV_WORKSPACE_ID": "aaaaaaaa-0000-4000-8000-000000000002"}
-    with pytest.raises(cp.PackageError, match="workspaceId правила неизменяем"):
+    with pytest.raises(cp.PackageError, match="a rule's workspaceId is immutable"):
         run_apply(fake, cp.resolve(["selfdev"]), env=moved)
 
 
@@ -1076,13 +1069,13 @@ def test_artifact_types_pass_check_and_go_before_task_types(sandbox):
 def test_artifact_schema_references_are_checked(sandbox):
     _artifact_package(sandbox, slot_type="report-doc")
     errors, _ = cp.check(cp.resolve(["docs"]))
-    assert any("'report-doc'" in e and "не объявлен" in e for e in errors)
+    assert any("'report-doc'" in e and "is declared neither" in e for e in errors)
 
 
 def test_output_media_types_must_narrow_the_artifact_type(sandbox):
     _artifact_package(sandbox, slot_media=["image/png"])
     errors, _ = cp.check(cp.resolve(["docs"]))
-    assert any("image/png" in e and "шире" in e for e in errors)
+    assert any("image/png" in e and "are wider" in e for e in errors)
 
 
 def test_artifact_type_definition_is_checked_by_the_core_validator(sandbox):
@@ -1104,7 +1097,7 @@ def test_artifact_type_apply_is_idempotent_and_changes_publish_a_version(sandbox
     versions = {r["version"]: r["status"] for r in fake.rows["artifact-types"]}
     assert versions == {1: "active", 2: "active"}  # у типов артефактов нет :deprecate
     assert result["ArtifactType/report-document"]["version"] == 2
-    assert any("изменились maxBytes" in line for line in lines)
+    assert any("changed maxBytes" in line for line in lines)
 
 
 def test_artifact_type_is_exported_as_a_package_document():
@@ -1213,7 +1206,7 @@ def test_agent_apply_is_idempotent_and_state_does_not_make_a_revision(sandbox):
     writes = list(fake.writes)
     _, lines = run_apply(fake, installation)
     assert fake.writes == writes  # only :validate the second time — it changes nothing
-    assert any("ревизия 1 без изменений" in line for line in lines)
+    assert any("revision 1 unchanged" in line for line in lines)
 
     placement = {**_agent_doc()["spec"]["placement"], "replicas": 2}
     shutil.rmtree(sandbox / "crew")
@@ -1257,7 +1250,7 @@ def test_agent_retire_stops_it_once(sandbox):
     _, lines = run_apply(fake, cp.resolve(["crew"], {"Agent": ["probe-coder"]}))
     assert _agent(fake, "probe-coder")["status"] == "retired"
     _, lines = run_apply(fake, cp.resolve(["crew"], {"Agent": ["probe-coder"]}))
-    assert any("уже выведен" in line for line in lines)
+    assert any("already retired" in line for line in lines)
 
 
 @pytest.mark.parametrize(
@@ -1464,13 +1457,13 @@ def test_notification_rule_is_validated_then_published_only_when_changed(sandbox
     )
     assert fake.writes == []  # в ядро правило уведомления не пишется
     assert any(
-        "NotificationRule/approval-requested: опубликована v1 (нет в сервисе)" in line
+        "NotificationRule/approval-requested: published v1 (not in the service)" in line
         for line in lines
     )
 
     _, lines = run_notify(fake, notify, installation)
     assert len(notify.writes) == 2  # без изменений — только :validate и чтение
-    assert any("NotificationRule/approval-requested: v1 без изменений" in line for line in lines)
+    assert any("NotificationRule/approval-requested: v1 unchanged" in line for line in lines)
 
     changed = _notification_rule_doc()
     changed["spec"]["notification"]["title"] = "Решение: {{task.title}}"
@@ -1478,7 +1471,7 @@ def test_notification_rule_is_validated_then_published_only_when_changed(sandbox
     _package_with(sandbox, "alerts", [changed, _notification_rule_doc("second")])
     _, lines = run_notify(fake, notify, cp.resolve(["alerts"]))
     assert _rule_version(notify, "approval-requested") == 2
-    assert any("опубликована v2 (изменилась спецификация)" in line for line in lines)
+    assert any("published v2 (spec changed)" in line for line in lines)
 
 
 def test_notification_rule_the_service_refuses_stops_the_installation_before_writes(sandbox):
@@ -1493,7 +1486,7 @@ def test_notification_rule_the_service_refuses_stops_the_installation_before_wri
     )
     fake, notify = FakeControlPlane(), FakeNotificationService()
     with pytest.raises(
-        cp.PackageError, match="NotificationRule/broken: сервис уведомлений не принимает"
+        cp.PackageError, match="NotificationRule/broken: the notification service rejects"
     ):
         run_notify(fake, notify, cp.resolve(["alerts"]))
     assert fake.writes == [] and notify.writes == []
@@ -1510,7 +1503,7 @@ def test_notification_rule_plan_only_validates(sandbox):
     assert (change["key"], change["operation"], change["detail"]) == (
         "approval-requested",
         "create",
-        "новая версия (нет в сервисе)",
+        "new version (not in the service)",
     )
 
 
@@ -1525,10 +1518,10 @@ def test_notification_rule_can_be_retired(sandbox):
     _, lines = run_notify(fake, notify, cp.resolve(["alerts"], retire))
     assert notify.rows[0]["state"] == "retired"
     assert notify.writes[-1] == ("POST", "/notification-rules/approval-requested:retire")
-    assert any("never-applied: нет в сервисе уведомлений" in line for line in lines)
+    assert any("never-applied: not in the notification service" in line for line in lines)
     before = len(notify.writes)
     _, lines = run_notify(fake, notify, cp.resolve(["alerts"], retire))
-    assert len(notify.writes) == before and any("уже выведено из оборота" in line for line in lines)
+    assert len(notify.writes) == before and any("already retired" in line for line in lines)
 
 
 def test_notification_rule_without_the_service_is_refused_before_any_write(sandbox):
@@ -1541,7 +1534,7 @@ def test_notification_rule_without_the_service_is_refused_before_any_write(sandb
     )
     fake = FakeControlPlane()
     for retire in ({}, {"NotificationRule": ["old"]}):
-        with pytest.raises(cp.PackageError, match="нужен сервис уведомлений"):
+        with pytest.raises(cp.PackageError, match="a notification service is needed"):
             run_apply(fake, cp.resolve(["alerts"], retire), env=NOTIFY_ENV)
     assert fake.writes == [] and fake.records == []
 
@@ -1569,7 +1562,7 @@ def test_notification_rule_export_round_trips_the_package_file(sandbox):
     text = cp.dump_document(exported, "../../schema/v1/object.schema.json")
     # ключ `on` — в двойных кавычках, как в файлах формата (TASK-001253)
     assert '"on":' in text and cp.yaml.safe_load(text) == exported
-    with pytest.raises(cp.PackageError, match="не найден"):
+    with pytest.raises(cp.PackageError, match="not found"):
         cp._fetch(applier, "NotificationRule", "missing", None)
 
 
@@ -1670,7 +1663,7 @@ def test_work_rule_identity_is_sent_compared_and_exported(sandbox):
 def test_work_rule_identity_must_name_an_agent_of_the_package(sandbox):
     _crew_with(sandbox, [_rules_agent_doc(), _identity_rule_doc(identity={"agent": "ghost"})])
     errors, _ = cp.check(cp.resolve(["crew"]), env=SELFDEV_ENV)
-    assert any("identity.agent ссылается на агента 'ghost'" in e for e in errors)
+    assert any("identity.agent references agent 'ghost'" in e for e in errors)
 
     shutil.rmtree(sandbox / "crew")
     _crew_with(sandbox, [_rules_agent_doc(), _identity_rule_doc(identity={"agent": "rules-bot"})])
@@ -1691,7 +1684,7 @@ def test_work_rule_identity_before_the_core_implements_it_is_a_clear_error(sandb
                 raise RuntimeError("POST /api/v1/rules: HTTP 501: not_implemented identity")
             return super().call(method, path, body, headers)
 
-    with pytest.raises(cp.PackageError, match="WorkRule/docs-drift-bot: ядро ещё не исполняет"):
+    with pytest.raises(cp.PackageError, match="WorkRule/docs-drift-bot: the core does not execute"):
         run_apply(PendingCore(), cp.resolve(["crew"]))
 
 
@@ -1715,7 +1708,7 @@ def test_agent_reference_in_an_assignment_must_name_a_known_agent(sandbox):
     errors, _ = cp.check(cp.resolve(["crew"]), env=SELFDEV_ENV)
     # ошибка — только у ссылки на неизвестного агента; шаблон разрешит ядро при исполнении
     assert [e.split(":")[0].rsplit("/", 1)[-1] for e in errors] == ["obj2.yaml"]
-    assert "action.fields.assignee ссылается на агента 'ghost'" in errors[0]
+    assert "action.fields.assignee references agent 'ghost'" in errors[0]
 
     fake = FakeControlPlane()
     shutil.rmtree(sandbox / "crew")
@@ -1818,7 +1811,7 @@ def test_record_is_called_once_per_package_with_every_object_including_unchanged
     _, lines = run_apply(fake, installation, env=env)
     assert fake.writes == writes
     assert fake.records[2:] == first
-    assert any("sdd " in line and "связь с пакетом записана" in line for line in lines)
+    assert any("sdd " in line and "package link recorded" in line for line in lines)
     assert fake.links[("TaskType", "feature-design")]["key"] == "sdd"
     assert fake.links[("TaskType", "coding-task")]["key"] == "selfdev"
 
@@ -1855,7 +1848,7 @@ def test_processes_and_calendars_are_left_to_the_plan_apply():
     fake = _core_with_processes()
     _, lines = run_apply(fake, cp.resolve(["platform-calendars"]))
     assert fake.records == []  # в пакете одни календари — связывать через record нечего
-    assert any("нечего" in line for line in lines)
+    assert any("nothing to link" in line for line in lines)
     assert len(fake.apply_calls) == 1 and "Calendar/ru" in fake.published
 
 
@@ -1866,8 +1859,8 @@ def test_record_error_breaks_apply_with_a_clear_message():
     fake.call("POST", "/api/v1/task-types", {"key": "ops", "displayName": "Ops"})
     with pytest.raises(
         cp.PackageError,
-        match=r"пакет selfdev .*: объекты применены, но ядро не записало их "
-        r"связь с пакетом \(POST /api/v1/packages:record\): .*HTTP 403",
+        match=r"package selfdev .*: objects applied, but the core did not record their link "
+        r"to the package \(POST /api/v1/packages:record\): .*HTTP 403",
     ):
         run_apply(fake, installation)
     # установка остановлена на связи: retire после неё не выполнялся
@@ -1886,7 +1879,7 @@ def test_record_kinds_come_from_the_core(sandbox):
     assert record["objects"] == _expected_record(installation.packages[0], kind["enum"])
     assert {item["kind"] for item in record["objects"]} == {"Skill"}
     assert any(
-        "Agent, TaskType, WorkRule ядро через /packages:record не связывает" in line
+        "the core does not link Agent, TaskType, WorkRule via /packages:record" in line
         for line in lines
     )
 
@@ -1898,7 +1891,7 @@ def test_core_without_record_stops_before_any_write():
         "info": {"version": "0.9.0"},
         "paths": {"/api/v1/task-types": {}},
     }
-    with pytest.raises(cp.PackageError, match="нет POST /api/v1/packages:record.*1a4b4c2"):
+    with pytest.raises(cp.PackageError, match="no POST /api/v1/packages:record.*1a4b4c2"):
         run_apply(fake, cp.resolve(["selfdev"]))
     assert fake.writes == [] and fake.records == []
 
@@ -1908,7 +1901,7 @@ def test_unreadable_openapi_falls_back_to_the_known_kinds():
     packages:record, который из OpenAPI не разобрать, — запасной, с предупреждением."""
     fake = FakeControlPlane()
     fake.openapi = None
-    with pytest.raises(cp.PackageError, match="версия ядра не прочитана"):
+    with pytest.raises(cp.PackageError, match="core version not read"):
         run_apply(fake, cp.resolve(["selfdev"]))
     assert fake.writes == []
 
@@ -1917,7 +1910,7 @@ def test_unreadable_openapi_falls_back_to_the_known_kinds():
     kind["enum"] = []
     installation = cp.resolve(["selfdev"])
     _, lines = run_apply(fake, installation)
-    assert any("OpenAPI ядра не прочитан" in line for line in lines)
+    assert any("the core's OpenAPI was not read" in line for line in lines)
     assert fake.records[0]["objects"] == _expected_record(installation.packages[0])
 
 
@@ -1943,7 +1936,7 @@ def test_fallback_kinds_and_openapi_snapshot_match_the_core():
     assert cp.recorded_kinds_from_openapi(snapshot) == cp.RECORDED_KINDS_FALLBACK
     core = _recorded_kind_literal()
     if core is None:
-        pytest.skip("рядом нет control-plane с RecordedKind")
+        pytest.skip(f"no RecordedKind in the core next to the SDK ({CORE_SOURCE})")
     assert core == cp.RECORDED_KINDS_FALLBACK
 
 

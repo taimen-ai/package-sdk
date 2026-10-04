@@ -1,6 +1,6 @@
 """Command-line entry point ``package-sdk`` (TAI-ADR-0062).
 
-package-sdk init|add|check|test|lock|cache|plan|apply|export|describe|docs|migrate-expr …
+package-sdk init|add|workflow|check|test|lock|cache|plan|apply|export|describe|docs|migrate-expr …
 package-sdk edit <operation> …    style-preserving edits of package files
 package-sdk sandbox [packages…]   package tests by the core's code in-process
 package-sdk mcp                   the author's MCP server over stdio (extra: mcp)
@@ -18,6 +18,7 @@ USAGE = """usage: package-sdk [--version] <command> [options]
 commands:
   init           a new package: manifest, a process with its test, CI, README
   add            a new object of any catalog kind in a package
+  workflow       regenerate the CI workflow of a package by the layout of this installation
   check          check packages: schema, references, core validators (--server: the core too)
   test           the test pyramid: check, skill contracts, integration tests, scenarios
   lock           pin the sources of an installation: commit and content hash (packages.lock)
@@ -25,7 +26,7 @@ commands:
   plan           build the one installation plan of every kind and save it (--out)
   apply          apply exactly a saved plan, after a human yes
   export         export an object from a server into a package file
-  describe       what an installation needs: variables, agent nodes, ontologies (--env-example)
+  describe       what an installation needs: variables, settings, nodes, ontologies (--env-example)
   docs           generated README sections of a package (--write, --check)
   migrate-expr   translate legacy expressions to CEL
   edit           style-preserving edits of package files (add-step, rename, set, …)

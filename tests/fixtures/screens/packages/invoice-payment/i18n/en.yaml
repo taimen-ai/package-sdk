@@ -1,0 +1,20 @@
+invoice-payment.list.title: Invoices
+invoice-payment.list.open: Open invoices
+invoice-payment.list.total: "{count, plural, one {Amount of # invoice} other {Amount of # invoices}}"
+invoice-payment.list.stage: Stage
+invoice-payment.list.deadline: Deadline
+invoice-payment.card.title: Invoice
+invoice-payment.card.invoice: Invoice
+invoice-payment.card.payment: Payment
+invoice-payment.fields.number: Number
+invoice-payment.fields.supplier: Supplier
+invoice-payment.fields.amount: Amount
+invoice-payment.fields.currency: Currency
+invoice-payment.fields.stage: Stage
+invoice-payment.fields.review: Review
+invoice-payment.fields.review.ok: Correct
+invoice-payment.fields.review.mismatch: Mismatch
+invoice-payment.fields.paymentReference: Payment reference
+invoice-payment.fields.invoice.supplier: Supplier
+invoice-payment.fields.invoice.amount: Amount
+invoice-payment.fields.invoice.currency: Currency

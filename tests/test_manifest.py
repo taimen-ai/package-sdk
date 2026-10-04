@@ -105,7 +105,7 @@ def test_semver_range_grammar_matches_the_schema() -> None:
         with pytest.raises(PackageError):
             for part in spec.split(","):
                 manifest._condition(part)
-    with pytest.raises(PackageError, match="не SemVer"):
+    with pytest.raises(PackageError, match="is not SemVer"):
         manifest.satisfies("v1", ">=1.0")
 
 
@@ -179,9 +179,9 @@ def test_declared_but_unused_variable_is_an_error(packages: Path) -> None:
 @pytest.mark.parametrize(
     ("kind", "value", "problem"),
     [
-        ("url", "helpdesk.example.com", "абсолютный URL"),
+        ("url", "helpdesk.example.com", "an absolute http(s):// URL is required"),
         ("workspace", "root", "UUID"),
-        ("integer", "50k", "целое"),
+        ("integer", "50k", "an integer is required"),
     ],
 )
 def test_default_and_example_must_fit_the_kind(
@@ -246,7 +246,7 @@ def test_apply_uses_defaults_and_names_the_missing_variable(packages: Path) -> N
     with pytest.raises(PackageError) as error:
         applier._spec(installation, agent)
     # описание из манифеста, без заглушки вместо значения
-    assert "HELPDESK_URL не задана" in str(error.value)
+    assert "variable HELPDESK_URL is not set" in str(error.value)
     assert "Helpdesk API the observer polls" in str(error.value)
     assert "https://helpdesk.example.com/api" in str(error.value)
 
@@ -281,7 +281,7 @@ def test_requires_range_is_checked_against_the_installation(packages: Path) -> N
     _set_spec(packages, "acme-base", version="0.1.4")
     errors, _ = manifest.check_manifest(_installation(packages))
     assert _codes(errors) == ["requires_version_mismatch"]
-    assert "нужен acme-base ^0.2, в установке acme-base 0.1.4" in errors[0]
+    assert "requires acme-base ^0.2, the installation has acme-base 0.1.4" in errors[0]
 
 
 def test_requires_object_form_resolves_like_a_key(packages: Path) -> None:
@@ -334,7 +334,7 @@ def test_every_used_kind_and_relation_is_in_the_declared_ontologies(packages: Pa
     pack = {**CLAIMS_PACK, "relations": [{"relation": "filed_by"}]}
     errors, _ = manifest.check_manifest(_with_pack(_installation(packages, pack=False), pack))
     assert _codes(errors) == ["knowledge_term_unknown"]
-    assert "связь 'resolved_by'" in errors[0] and "Process/claim" in errors[0]
+    assert "relation 'resolved_by'" in errors[0] and "Process/claim" in errors[0]
     errors, _ = manifest.check_manifest(_installation(packages))
     assert errors == []
 
@@ -411,7 +411,7 @@ def test_describe_without_neighbours_still_answers(tmp_path: Path) -> None:
     assert installation is None and "acme-base" in (problem or "")
     info = manifest.describe(package)
     assert info["requires"][0]["resolved"] is None
-    assert "(не найдена рядом)" in manifest.format_describe(info, problem)
+    assert "(not found nearby)" in manifest.format_describe(info, problem)
 
 
 def test_describe_cli_and_env_example_carry_no_secret_values(
@@ -422,7 +422,7 @@ def test_describe_cli_and_env_example_carry_no_secret_values(
     assert cli.main(["describe", str(packages / "acme-claims")]) == 0
     text = capsys.readouterr().out
     assert "helpdesk-token" in text and "s3cr3t" not in text and UUID not in text
-    assert "CLAIMS_WORKSPACE_ID [workspace, обязательна]" in text
+    assert "CLAIMS_WORKSPACE_ID [workspace, required]" in text
 
     assert cli.main(["describe", str(packages / "acme-claims"), "--env-example"]) == 0
     example = capsys.readouterr().out
@@ -512,7 +512,7 @@ DIGEST = "sha256:" + "a" * 64
         (f"ghcr.io/acme/obs@{DIGEST}", True),
         (f"ghcr.io/acme/obs:1.0@{DIGEST}", True),
         ("acme/obs:1", True),
-        ("ghcr.io/acme/obs", False),  # тег или дайджест обязателен (CP-ADR-0073 Е1)
+        ("ghcr.io/acme/obs", False),  # тег или дайджест обязателен (CP-ADR-0073 З1)
         ("ghcr.io/Acme/obs:1", False),
         ("user:secret@ghcr.io/acme/obs:1", False),
         ("ghcr.io/acme/obs@sha256:abc", False),

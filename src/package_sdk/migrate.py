@@ -26,8 +26,9 @@ def _translator() -> ExpressionTranslator:
         from control_plane.domain import cel_profile
     except ImportError as error:
         raise PackageError(
-            "перевод выражений в CEL даёт ядро (control_plane.domain.cel_profile), а его модуль "
-            "не импортируется — нужен control-plane с профилем CEL taimen/1 (CP-ADR-0075)"
+            "expression translation to CEL comes from the core (control_plane.domain.cel_profile), "
+            "but its module does not import — control-plane with the CEL profile taimen/1 is "
+            "required (CP-ADR-0075)"
         ) from error
     missing = [
         name
@@ -36,15 +37,15 @@ def _translator() -> ExpressionTranslator:
     ]
     if missing:
         raise PackageError(
-            f"в control_plane.domain.cel_profile нет {', '.join(missing)} — нужен control-plane "
-            "с переводом прежних синтаксисов (CP-ADR-0075 Р7)"
+            f"control_plane.domain.cel_profile has no {', '.join(missing)} — control-plane with "
+            "translation of legacy syntaxes is required (CP-ADR-0075 R7)"
         )
     return cel_profile  # type: ignore[return-value]
 
 
 def _pointer_parts(pointer: str) -> list[str]:
     if not pointer.startswith("/"):
-        raise PackageError(f"указатель выражения {pointer!r} — не JSON pointer")
+        raise PackageError(f"expression pointer {pointer!r} is not a JSON pointer")
     return [part.replace("~1", "/").replace("~0", "~") for part in pointer[1:].split("/")]
 
 
@@ -89,13 +90,13 @@ def migrate_expressions(
             try:
                 translation = core.translate(expression)
             except Exception as error:
-                log(f"   ! {where} не переводится: {error}")
+                log(f"   ! {where} cannot be translated: {error}")
                 continue
             _replace_at(doc.data, expression.pointer, translation.expression)
             changed += 1
             bindings = tuple(getattr(translation, "bindings", ()) or ())
             if bindings:
-                log(f"   {where}: читает переменные сверх профиля: {', '.join(bindings)}")
+                log(f"   {where}: reads variables beyond the profile: {', '.join(bindings)}")
         if not changed:
             continue
         total += changed
@@ -113,7 +114,7 @@ def migrate_expressions(
         if write:
             doc.save()
     log(
-        f"{'записано' if write else 'к переводу'}: выражений {total}"
-        + ("" if write or not total else " (--write — записать)")
+        f"{'written' if write else 'to translate'}: expressions {total}"
+        + ("" if write or not total else " (--write to write)")
     )
     return total

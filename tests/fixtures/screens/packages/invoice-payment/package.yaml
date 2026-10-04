@@ -1,0 +1,12 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Screens of a package by description (TAI-ADR-0066, CP-ADR-0080): the instances of the
+# process invoice-payment as a list and as a card, every string a key of the dictionaries
+# i18n/en.yaml and i18n/ru.yaml.
+apiVersion: taimen.ai/v1
+kind: Package
+key: invoice-payment
+spec:
+  version: 1.0.0
+  displayName: Invoice payment
+  locales: [en, ru]
+  defaultLocale: en

@@ -72,17 +72,18 @@ def check_secret_name(name: str) -> None:
     ``secret_name_invalid`` (как ``skill_sdk.secrets.check_secret_name``)."""
     if not name or "/" in name or "\\" in name or "\0" in name or ".." in name:
         raise SecretRejected(
-            name, NAME_INVALID, "имя секрета не может быть путём: без '/', '..' и абсолютных путей"
+            name, NAME_INVALID, "a secret name cannot be a path: no '/', '..' or absolute paths"
         )
     if name in RESERVED_SECRET_NAMES:
         raise SecretRejected(
-            name, NAME_INVALID, f"имя {name} зарезервировано: это учётка агента на узле"
+            name, NAME_INVALID, f"name {name} is reserved: it is the agent's credential on the node"
         )
     if not SECRET_FILE_NAME.fullmatch(name):
         raise SecretRejected(
             name,
             NAME_INVALID,
-            f"имя секрета не подходит под шаблон имён секретов узла {SECRET_FILE_NAME.pattern}",
+            "the secret name does not match the node secret name pattern "
+            f"{SECRET_FILE_NAME.pattern}",
         )
 
 
@@ -101,7 +102,7 @@ def read_secret_file(directory: str | os.PathLike[str], name: str) -> str | None
         except _Vanished:
             if attempt == SWAP_ATTEMPTS - 1:
                 return None  # висячая ссылка внутри каталога — файла нет
-    raise _rejected(name, "путь к файлу подменён во время чтения", "symlink_swapped")
+    raise _rejected(name, "the file path was replaced while being read", "symlink_swapped")
 
 
 class _Swapped(Exception):
@@ -165,7 +166,7 @@ def _walk(root: int, directory: Path, name: str) -> str | None:
             if stat.S_ISLNK(info.st_mode):
                 links += 1
                 if links > MAX_SYMLINKS:
-                    raise _rejected(name, "слишком много символических ссылок", "unreadable")
+                    raise _rejected(name, "too many symbolic links", "unreadable")
                 try:
                     target = os.readlink(part, dir_fd=here)
                 except OSError:
@@ -186,7 +187,7 @@ def _walk(root: int, directory: Path, name: str) -> str | None:
                 stack.append(_open_dir(part, here, directory / name, name))
                 continue
             return _read_file(_open_file(part, here, directory / name, name), name)
-        raise _rejected(name, "это не обычный файл", "not_regular_file")
+        raise _rejected(name, "not a regular file", "not_regular_file")
     finally:
         for fd in stack[1:]:
             os.close(fd)
@@ -215,7 +216,9 @@ def _open_dir(part: str, here: int, path: Path, name: str) -> int:
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise _Swapped from None
-        raise _rejected(name, f"каталог не открывается ({exc.strerror})", "unreadable") from None
+        raise _rejected(
+            name, f"the directory cannot be opened ({exc.strerror})", "unreadable"
+        ) from None
 
 
 def _open_file(part: str, here: int, path: Path, name: str) -> int:
@@ -231,13 +234,13 @@ def _open_file(part: str, here: int, path: Path, name: str) -> int:
     except OSError as exc:
         if exc.errno == errno.ELOOP:
             raise _Swapped from None  # был файлом при проверке — стал ссылкой
-        raise _rejected(name, f"файл не открывается ({exc.strerror})", "unreadable") from None
+        raise _rejected(name, f"the file cannot be opened ({exc.strerror})", "unreadable") from None
 
 
 def _read_file(fd: int, name: str) -> str:
     try:
         if not stat.S_ISREG(os.fstat(fd).st_mode):
-            raise _rejected(name, "это не обычный файл", "not_regular_file")
+            raise _rejected(name, "not a regular file", "not_regular_file")
         data = b""
         while len(data) <= MAX_SECRET_FILE_BYTES:
             chunk = os.read(fd, MAX_SECRET_FILE_BYTES + 1 - len(data))
@@ -247,11 +250,13 @@ def _read_file(fd: int, name: str) -> str:
     finally:
         os.close(fd)
     if len(data) > MAX_SECRET_FILE_BYTES:
-        raise _rejected(name, f"файл больше {MAX_SECRET_FILE_BYTES // 1024} КиБ", "too_large")
+        raise _rejected(
+            name, f"the file is larger than {MAX_SECRET_FILE_BYTES // 1024} KiB", "too_large"
+        )
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
-        raise _rejected(name, "файл не в UTF-8", "not_utf8") from None
+        raise _rejected(name, "the file is not UTF-8", "not_utf8") from None
     if not text.strip():
         return ""  # файл из одних пробельных символов — секрета нет
     return text.rstrip("\r\n")
@@ -261,14 +266,15 @@ def _unreadable(name: str, path: Path) -> SecretRejected:
     return SecretRejected(
         name,
         UNREADABLE,
-        f"файл секрета {path} не читается: нет прав у пользователя процесса (uid {os.getuid()})",
+        f"secret file {path} is not readable: the process user has no permission "
+        f"(uid {os.getuid()})",
         retryable=True,
     )
 
 
 def _outside(name: str) -> SecretRejected:
-    return _rejected(name, "ссылка ведёт за пределы каталога секретов", "outside_secrets_dir")
+    return _rejected(name, "the link leads outside the secrets directory", "outside_secrets_dir")
 
 
 def _rejected(name: str, why: str, reason: str) -> SecretRejected:
-    return SecretRejected(name, FILE_REJECTED, f"файл секрета {name} отвергнут: {why}", reason)
+    return SecretRejected(name, FILE_REJECTED, f"secret file {name} rejected: {why}", reason)

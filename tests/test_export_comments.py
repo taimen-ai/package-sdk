@@ -206,7 +206,7 @@ def test_one_element_change_touches_only_its_lines(
     try:
         export.export_object(package_dir, kind, key, {"key": key, "version": 2, "spec": spec})
     except PackageError as error:
-        if "не совпала" in str(error):
+        if "the written file does not match the export" in str(error):
             raise
         pytest.skip(f"схема не допускает такой объект: {error}")
     after = file.read_text(encoding="utf-8").splitlines(keepends=True)

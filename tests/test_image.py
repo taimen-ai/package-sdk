@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from package_sdk import cli, image
+from package_sdk import cli, image, layout
 from package_sdk.model import PackageError
 
 FEED = Path(__file__).parent / "fixtures" / "connector" / "sample-feed"
@@ -85,16 +85,16 @@ def test_skills_dockerfile() -> None:
 
 
 def test_refusals(tmp_path: Path) -> None:
-    with pytest.raises(PackageError, match=r"нет pyproject\.toml"):
+    with pytest.raises(PackageError, match=r"no pyproject\.toml"):
         image.observer_dockerfile(tmp_path)
     (tmp_path / "pyproject.toml").write_text("", encoding="utf-8")
     with pytest.raises(PackageError, match="src/"):
         image.observer_dockerfile(tmp_path)
-    with pytest.raises(PackageError, match="модуль:функция"):
+    with pytest.raises(PackageError, match="module:function"):
         image.observer_dockerfile(FEED, entrypoint="not-an-entrypoint")
-    with pytest.raises(PackageError, match="хотя бы один"):
+    with pytest.raises(PackageError, match="at least one"):
         image.skills_dockerfile(FEED, modules=[])
-    with pytest.raises(PackageError, match="не ссылка на образ"):
+    with pytest.raises(PackageError, match="not an image reference"):
         image.observer_dockerfile(FEED, base="bad image; rm -rf /")
 
 
@@ -112,7 +112,7 @@ def test_cli_writes_the_file_and_the_dockerignore(
     assert (package / ".dockerignore").read_text(encoding="utf-8") == image.dockerignore(package)
     (package / ".dockerignore").write_text("*.log\n", encoding="utf-8")
     assert cli.main(args) == 0  # чужой .dockerignore не перезаписывается — предупреждение
-    assert "отличается" in capsys.readouterr().err
+    assert "differs from the required one" in capsys.readouterr().err
     assert cli.main(["image", "skills", "--package", str(FEED), "--modules", "a.b"]) == 0
     assert "CONTROL_PLANE_SKILLS_LOCAL_PACKAGES" in capsys.readouterr().out
     assert cli.main(["image", "observer", "--package", str(tmp_path / "none")]) == 1
@@ -127,7 +127,7 @@ def test_observer_image_of_the_fixture_builds(tmp_path: Path) -> None:
     (базовый образ с ними), наблюдатель проверяется при сборке."""
     wheels = tmp_path / "base" / "wheels"
     wheels.mkdir(parents=True)
-    for source in (SDK, SDK.parent / "control-plane" / "client"):
+    for source in (SDK, layout.neighbour("control-plane") / "client"):
         subprocess.run(
             ["uv", "build", "--wheel", "--out-dir", str(wheels), str(source)], check=True
         )

@@ -75,18 +75,18 @@ def parse_int(text: str) -> int:
     ValueError — для другой записи (``1:30``, ``1_000``, ``0b1``) и для больше
     :data:`MAX_INT_DIGITS` цифр, до того как платить за ``int()``."""
     if not _INT.match(text):
-        raise ValueError(f"{_shown(text)!r} — не целое YAML 1.2")
+        raise ValueError(f"{_shown(text)!r} is not a YAML 1.2 integer")
     base = {"0o": 8, "0x": 16}.get(text[:2], 10)
     digits = text.lstrip("+-") if base == 10 else text[2:]
     if len(digits) > MAX_INT_DIGITS:
-        raise ValueError(f"в целом больше {MAX_INT_DIGITS} цифр")
+        raise ValueError(f"integer has more than {MAX_INT_DIGITS} digits")
     return -int(digits, base) if text.startswith("-") else int(digits, base)
 
 
 def parse_bool(text: str) -> bool:
     """Булево YAML 1.2; ValueError — для другой записи (``yes``, ``on``)."""
     if text not in _BOOLS:
-        raise ValueError(f"{_shown(text)!r} — не булево YAML 1.2")
+        raise ValueError(f"{_shown(text)!r} is not a YAML 1.2 boolean")
     return _BOOLS[text]
 
 
@@ -101,12 +101,12 @@ def parse_float(text: str) -> float:
         )
     except (ValueError, IndexError):
         # float() слова или пустой !!float у PyYAML.
-        raise ValueError(f"{_shown(text)!r} — не число с плавающей точкой") from None
+        raise ValueError(f"{_shown(text)!r} is not a floating-point number") from None
     except OverflowError:
         # Шестидесятеричное YAML 1.1 за пределами float: 60 ** n как целое.
         value = math.inf
     if not math.isfinite(value):
-        raise ValueError(f"значение {_shown(text)!r}: в пакете только значения JSON")
+        raise ValueError(f"value {_shown(text)!r}: a package holds only JSON values")
     return float(value)
 
 
@@ -124,7 +124,7 @@ def _children(node: Any) -> Iterator[Any]:
 def scalar_problem(tag: str, value: str) -> str | None:
     """Почему скаляр с этим тегом ядро не прочтёт; None — прочтёт."""
     if _SURROGATE.search(value):
-        return "строка содержит одиночный суррогат (\\ud800-\\udfff): это не текст Unicode"
+        return "string contains a lone surrogate (\\ud800-\\udfff): this is not Unicode text"
     parse = {BOOL_TAG: parse_bool, INT_TAG: parse_int, FLOAT_TAG: parse_float}.get(tag)
     if parse is not None:
         try:
@@ -149,7 +149,7 @@ def value_problem(root: Any) -> str | None:
         seen.add(id(node))
         tag = str(node.tag)
         if tag not in JSON_TAGS:
-            problem: str | None = f"значение с тегом {tag}: в пакете только значения JSON"
+            problem: str | None = f"value tagged {tag}: a package holds only JSON values"
         elif isinstance(node.value, str):
             problem = scalar_problem(tag, node.value)
         else:
@@ -157,7 +157,7 @@ def value_problem(root: Any) -> str | None:
             continue
         if problem is not None:
             mark = getattr(node, "start_mark", None)
-            return f"строка {mark.line + 1}: {problem}" if mark is not None else problem
+            return f"line {mark.line + 1}: {problem}" if mark is not None else problem
     return None
 
 

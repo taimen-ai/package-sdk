@@ -2,8 +2,9 @@ name: CI
 
 # The same make targets as the executor's checks (.agents/runner.yaml).
 # control-plane, skill-sdk and platform-auth-sdk are path dependencies of the
-# extras (flat layout, ADR-0029), so they are checked out next to this
-# repository. uv.lock follows the core revision pinned by the umbrella; set
+# extras, so they are checked out in the umbrella layout (TAI-ADR-0064, the
+# manifest src/package_sdk/layout.json): sdk/package-sdk, sdk/skill-sdk,
+# sdk/platform-auth-sdk and services/control-plane. uv.lock follows the core revision pinned by the umbrella; set
 # CONTROL_PLANE_REF to that revision when it is not the default branch (`main`).
 # The fallback addresses are the public mirror's: <owner>/control-plane,
 # <owner>/skill-sdk, <owner>/platform-auth-sdk and taimen-ai/taimen; a fork with other
@@ -36,34 +37,34 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: package-sdk
+        working-directory: sdk/package-sdk
     steps:
       - uses: actions/checkout@v4
         with:
-          path: package-sdk
+          path: sdk/package-sdk
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.CONTROL_PLANE_REPO || format('{0}/control-plane', github.repository_owner) }}
           ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
           ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
           persist-credentials: false
-          path: control-plane
+          path: services/control-plane
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
           persist-credentials: false
-          path: skill-sdk
+          path: sdk/skill-sdk
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
           persist-credentials: false
-          path: platform-auth-sdk
+          path: sdk/platform-auth-sdk
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: package-sdk/uv.lock
+          cache-dependency-glob: sdk/package-sdk/uv.lock
       - run: make install
       - run: make lint
       - run: make typecheck
@@ -78,7 +79,7 @@ jobs:
     timeout-minutes: 20
     defaults:
       run:
-        working-directory: package-sdk
+        working-directory: sdk/package-sdk
     services:
       postgres:
         image: postgres:16-alpine
@@ -92,7 +93,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          path: package-sdk
+          path: sdk/package-sdk
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -100,23 +101,23 @@ jobs:
           # the default branch of the core; CONTROL_PLANE_REF pins a tag of a core release
           ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
           ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
-          path: control-plane
+          path: services/control-plane
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
-          path: skill-sdk
+          path: sdk/skill-sdk
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
-          path: platform-auth-sdk
+          path: sdk/platform-auth-sdk
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: package-sdk/uv.lock
+          cache-dependency-glob: sdk/package-sdk/uv.lock
       - run: make install
       - name: package-sdk test examples/claims/claims (sandbox)
         env:
@@ -177,18 +178,19 @@ jobs:
     env:
       STAND_DIR: ${{ github.workspace }}/stand
       WORK_DIR: ${{ github.workspace }}/claims-work
-      EXAMPLE_DIR: ${{ github.workspace }}/package-sdk/examples/claims
+      EXAMPLE_DIR: ${{ github.workspace }}/sdk/package-sdk/examples/claims
       E2E: uv run python examples/claims/stand/e2e.py
       SERVER: http://127.0.0.1:18000
     defaults:
       run:
-        working-directory: package-sdk
+        working-directory: sdk/package-sdk
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          path: package-sdk
-      # The open supply: the public umbrella and its component submodules.
+          path: sdk/package-sdk
+      # The open supply: the public umbrella and its component submodules, in the
+      # layout services/, sdk/ (TAI-ADR-0064).
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -203,32 +205,32 @@ jobs:
           # the default branch of the core; CONTROL_PLANE_REF pins a tag of a core release
           ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
           ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
-          path: control-plane
+          path: services/control-plane
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           repository: ${{ vars.SKILL_SDK_REPO || format('{0}/skill-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.SKILL_SDK_DEPLOY_KEY }}
-          path: skill-sdk
+          path: sdk/skill-sdk
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
           repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
-          path: platform-auth-sdk
+          path: sdk/platform-auth-sdk
       # The core the SDK is tested against replaces the pinned one: package plans, the
       # tests of rules and task types and executor.image are newer than the last release.
       - name: The core of this revision in the stand
         working-directory: ${{ github.workspace }}
         run: |
-          rm -rf stand/control-plane stand/platform-auth-sdk
-          cp -a control-plane stand/control-plane
-          cp -a platform-auth-sdk stand/platform-auth-sdk
-          git -C stand/control-plane log -1 --format='core: %H %s' | tee -a "$GITHUB_STEP_SUMMARY"
+          rm -rf stand/services/control-plane stand/sdk/platform-auth-sdk
+          cp -a services/control-plane stand/services/control-plane
+          cp -a sdk/platform-auth-sdk stand/sdk/platform-auth-sdk
+          git -C stand/services/control-plane log -1 --format='core: %H %s' | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: astral-sh/setup-uv@v4
         with:
           enable-cache: true
-          cache-dependency-glob: package-sdk/uv.lock
+          cache-dependency-glob: sdk/package-sdk/uv.lock
       - run: make install
 
       - name: Stand up (make secrets, make up PROFILES="core notify")
@@ -251,7 +253,8 @@ jobs:
           operator=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['cpOperatorPrincipalId'])" "$state")
           tenant=$(python3 -c "import json, sys; print(json.load(open(sys.argv[1]))['iamTenantId'])" "$state")
           sed -i "s|^CP_KNOWLEDGE_PACK_ADMINS=.*|CP_KNOWLEDGE_PACK_ADMINS=[\"$operator\"]|; s|^IAM_TENANT_ID=.*|IAM_TENANT_ID=$tenant|" .env
-          docker compose --profile core --profile notify up -d control-plane-api control-plane-worker context-adapter notification-service
+          docker compose --project-directory . -f deploy/local/compose.yml --profile core --profile notify \
+            up -d control-plane-api control-plane-worker context-adapter notification-service
           for i in $(seq 1 60); do make smoke >/dev/null 2>&1 && break; sleep 5; done
           make smoke
 
@@ -274,14 +277,16 @@ jobs:
       - name: Images of the example
         working-directory: ${{ github.workspace }}
         run: |
-          docker build -f package-sdk/examples/claims/stand/observer-base.Dockerfile \
-            --build-context package-sdk=package-sdk --build-context client=control-plane/client \
-            -t claims-stand/observer-base:ci package-sdk/examples/claims/stand
-          docker build -f package-sdk/examples/claims/stand/runner-base.Dockerfile \
-            --build-context control-plane=control-plane --build-context auth=platform-auth-sdk \
-            --build-context skill-sdk=skill-sdk --build-context llm=stand/platform-llm \
-            -t claims-stand/runner-base:ci package-sdk/examples/claims/stand
-          cd package-sdk/examples/claims/claims
+          docker build -f sdk/package-sdk/examples/claims/stand/observer-base.Dockerfile \
+            --build-context package-sdk=sdk/package-sdk \
+            --build-context client=services/control-plane/client \
+            -t claims-stand/observer-base:ci sdk/package-sdk/examples/claims/stand
+          docker build -f sdk/package-sdk/examples/claims/stand/runner-base.Dockerfile \
+            --build-context control-plane=services/control-plane \
+            --build-context auth=sdk/platform-auth-sdk \
+            --build-context skill-sdk=sdk/skill-sdk --build-context llm=stand/sdk/platform-llm \
+            -t claims-stand/runner-base:ci sdk/package-sdk/examples/claims/stand
+          cd sdk/package-sdk/examples/claims/claims
           docker build --build-arg BASE_IMAGE=claims-stand/observer-base:ci -f Dockerfile \
             -t registry.example.com/claims/helpdesk-observer:0.1.0 .
           docker build --build-arg RUNNER_IMAGE=claims-stand/runner-base:ci -f Dockerfile.skills \
@@ -315,4 +320,4 @@ jobs:
           for name in claims-helpdesk-observer claims-claims-skills helpdesk stub-model; do
             echo "== $name"; docker logs --tail 200 "$name" 2>&1 || true
           done
-          docker compose --profile "*" logs --tail 200
+          docker compose --project-directory . -f deploy/local/compose.yml --profile "*" logs --tail 200

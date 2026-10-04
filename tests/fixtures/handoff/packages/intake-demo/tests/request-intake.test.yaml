@@ -1,0 +1,17 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+# Автор наблюдения (emit.by) попадает в данные дела, задача рассмотрения открывается с
+# полями из дела, решение человека дописывается к ним.
+process: request-intake
+name: the review task is filled from the case
+given:
+  principals: {reviewer: [alice]}
+steps:
+  - emit:
+      observation: request.submitted
+      by: carol
+      payload: {id: R-1}
+  - expect:
+      data: {submittedBy: carol}
+      tasks: [{step: review-request, customFields: {request: R-1, submittedBy: carol}}]
+  - complete: {step: review-request, by: alice, output: {decision: approved}}
+  - expect: {status: completed, outcome: reviewed, data: {decision: approved}}

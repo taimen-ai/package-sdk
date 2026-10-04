@@ -1,0 +1,11 @@
+{
+  "$comment": "Layout of the installation this package-sdk belongs to (TAI-ADR-0064): where each component lies in the tree of the installation, by its stable name. It changes together with the path dependencies of pyproject.toml; the CI workflow of a package author lays out .platform/ by it (package-sdk workflow).",
+  "version": 1,
+  "components": {
+    "package-sdk": "sdk/package-sdk",
+    "control-plane": "services/control-plane",
+    "platform-auth-sdk": "sdk/platform-auth-sdk",
+    "skill-sdk": "sdk/skill-sdk",
+    "memory-service": "services/memory-service"
+  }
+}

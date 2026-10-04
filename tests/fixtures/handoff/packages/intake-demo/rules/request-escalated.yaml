@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Эскалированная заявка — решение, которое принимает держатель роли approvers.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: request-escalated
+spec:
+  description: An escalated request needs a decision of an approver
+  trigger: {kind: observation, type: request.escalated}
+  action:
+    kind: request_decision
+    taskType: request-review
+    dedupKeyTemplate: "request-escalated:{{payload.id}}"
+    fields:
+      title: "Decide on the escalated request {{payload.id}}"
+      approverRole: "role:approvers"

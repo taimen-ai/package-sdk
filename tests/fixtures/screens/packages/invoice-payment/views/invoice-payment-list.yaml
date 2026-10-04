@@ -1,0 +1,28 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/view.schema.json
+# The instances of the process: figures over them, a table, filters and the card on a click.
+apiVersion: taimen.ai/v1
+kind: View
+key: invoice-payment-list
+spec:
+  title: invoice-payment.list.title
+  nav: {group: work, icon: receipt, order: 30}
+  audience: {roles: [accounting]}
+  source:
+    process: invoice-payment
+    filter: "status == 'running'"
+  layout:
+    - block: metrics
+      items:
+        - {title: invoice-payment.list.open, value: "count()"}
+        - {title: invoice-payment.list.total, value: "sum(data.amount)", format: money}
+    - block: table
+      columns:
+        - {field: data.number}
+        - {field: data.supplier}
+        - {field: data.amount, format: money}
+        - {label: invoice-payment.list.stage, field: stage, format: status}
+        - {label: invoice-payment.list.deadline, field: slaState, format: status}
+      filters: [data.currency, data.review, stage]
+      sort: [{field: data.amount, dir: desc}]
+      pageSize: 50
+      open: {view: invoice-payment-card, id: id}

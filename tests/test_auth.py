@@ -405,7 +405,7 @@ def test_static_credential_of_the_client_is_not_refreshed() -> None:
 
 
 def test_token_and_an_authorization_header_together_are_refused(core: FakeCore) -> None:
-    with pytest.raises(ValueError, match="либо token"):
+    with pytest.raises(ValueError, match="either token or Authorization"):
         Target(server=SERVER, http=core, headers={"Authorization": "Bearer t"}, token="t")
 
 

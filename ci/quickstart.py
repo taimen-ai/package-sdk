@@ -1,56 +1,69 @@
 #!/usr/bin/env python3
-"""Быстрый старт руководства как проверка CI (S032, SC-001).
+"""The guide's quickstart as a CI check (S032, SC-001).
 
-Страница «Пакет за 10 минут» (`guide/docs/packages/quickstart.md` суперпроекта)
-исполняется как есть: команды берутся из её блоков кода, файлы — из её блоков
-YAML, и всё это идёт в чистом каталоге с изолированными `HOME`, каталогами uv и
-конфигурацией git. Стенд не нужен; шаги со стендом страница помечает пропуском.
+The "Package in 10 minutes" page (`guide/docs/packages/quickstart.md` of the
+superproject) is executed as is: commands come from its code blocks, files from its
+YAML blocks, and everything runs in a clean directory with an isolated `HOME`, uv
+directories and git configuration. No server is needed; the page marks steps that
+need one as skipped.
 
-Разметка страницы — HTML-комментарий последней непустой строкой перед блоком кода
-(в собранном руководстве его не видно):
+Page markup is an HTML comment on the last non-blank line before a code block
+(it is invisible in the built guide):
 
-    <!-- quickstart: skip <причина> -->        блок не исполняется (plan/apply);
-    <!-- quickstart: file <путь> -->           содержимое блока пишется в файл
-                                               относительно текущего каталога;
-    <!-- quickstart: requires docker -->      блок исполняется только с Docker;
-    <!-- quickstart: without-docker exit=<код> [output=<строка>] -->
-                                               без Docker блок исполняется
-                                               отдельным `bash -e` и обязан
-                                               завершиться этим кодом (и
-                                               напечатать строку).
+    <!-- quickstart: skip <reason> -->         the block is not executed (plan/apply);
+    <!-- quickstart: file <path> -->           the block's content is written to a file
+                                               relative to the current directory;
+    <!-- quickstart: requires docker -->      the block runs only with Docker;
+    <!-- quickstart: without-docker exit=<code> [output=<string>] -->
+                                               without Docker the block runs as a
+                                               separate `bash -e` and must exit
+                                               with this code (and print the
+                                               string).
 
-Разметка — одна строка; разметка, разнесённая на несколько строк, и блок кода
-внутри многострочного HTML-комментария — ошибки извлечения.
+Markup is a single line; markup spread over several lines and a code block inside
+a multi-line HTML comment are extraction errors.
 
-Блок `bash`/`sh`/`shell` без разметки исполняется. Иллюстрации — только блоки из
-явного списка ILLUSTRATION (вывод `text` и т.п.). Любой другой блок без разметки —
-данные (`yaml`), пустой, `console`, `zsh`, `{.bash}` — ошибка извлечения: шаг
-страницы не должен молча выпасть из проверки и из отпечатка.
+A `bash`/`sh`/`shell` block without markup is executed. Illustrations are only the
+blocks from the explicit ILLUSTRATION list (`text` output and the like). Any other
+block without markup — data (`yaml`), empty, `console`, `zsh`, `{.bash}` — is an
+extraction error: a page step must not silently drop out of the check and the
+fingerprint.
 
-Подстановки: `<тег>` и `<тег ядра>` заменяются веткой локальных зеркал, а
-`git clone https://…/<имя>.git` идёт в зеркало соседа по плоской раскладке
-(`url.<зеркало>.insteadOf`): проверяется код этого коммита SDK и соседних клонов,
-а не опубликованный выпуск. Неизвестная подстановка — ошибка и в командах, и в
-файлах.
+Substitutions: `<тег>` and `<тег ядра>` (the page's release-tag placeholders) are
+replaced by the branch of the local mirrors, and `git clone https://…/<name>.git`
+goes to the mirror of the neighbour at its path in the layout of the installation
+(src/package_sdk/layout.json; `url.<mirror>.insteadOf`):
+the code of this SDK commit and of the neighbouring clones is checked, not the
+published release. An unknown substitution is an error in commands and files alike.
 
-Прерывание прогона (лимит, SIGTERM, Ctrl-C) снимает сессию bash целиком и
-останавливает контейнер базы, если его запустил этот прогон.
+Interrupting a run (the limit, SIGTERM, Ctrl-C) takes down the whole bash session
+and stops the database container if this run started it.
 
-Закрепление. Ревизия суперпроекта закреплена в `ci/quickstart-pin.json`: коммит,
-путь страницы и отпечаток плана — sha256 извлечённых шагов (команды, файлы,
-разметка; без номеров строк и прозы). `run` исполняет страницу на закреплённом
-коммите; `pin check` сравнивает план головы ветки суперпроекта с закреплённым и
-падает, если команды или файлы страницы изменились, а закрепление — нет. Правка
-прозы проверку не ломает. Сдвиг закрепления — `pin update` и зелёный `run` в том
-же коммите SDK.
+Pinning. The superproject revision is pinned in `ci/quickstart-pin.json`: the commit,
+the page path and the plan fingerprint — the sha256 of the extracted steps (commands,
+files, markup; without line numbers and prose). `run` executes the page at the pinned
+commit; `pin check` compares the plan at the head of the superproject branch with the
+pinned one and fails if the page's commands or files changed while the pin did not.
+Editing prose does not break the check. Moving the pin is `pin update` and a green
+`run` in the same SDK commit.
 
-Публичный зонтик — проекция снимков с собственной историей: закреплённого коммита
-приватного суперпроекта в нём нет и не будет. Если коммит в клоне недостижим,
-страница сверяется по содержимому: берётся страница на голове клона (`run`) или на
-`--against` (`pin check`), и её план обязан совпасть с закреплённым — тогда
-исполняется она, иначе ошибка «страница изменилась — `pin update`». Если страницы
-нет и там, это `PageMissing`: `pin status` печатает `page=missing`, и CI пропускает
-job с пояснением, а не падает. Где коммит достижим, поведение прежнее — по коммиту.
+The public umbrella is a projection of snapshots with its own history: the pinned
+commit of the private superproject is not there and never will be. If the commit is
+unreachable in the clone, the page is checked by content: the page at the clone's head
+(`run`) or at `--against` (`pin check`) is taken, and its plan must equal the pinned
+one — then it is executed, otherwise the error is "the page changed — `pin update`".
+If the page is not there either, that is `PageMissing`: `pin status` prints
+`page=missing`, and CI skips the job with a notice instead of failing. Where the commit
+is reachable, the behaviour is as before — by commit.
+
+The pin always names the superproject's source page — the Russian one
+(`guide/docs/packages/quickstart.md`; its English translation lies next to it as
+`quickstart.en.md` and is not executed). The umbrella's guide is bilingual with the
+English default: there `quickstart.md` is the translation (`<tag>` placeholders,
+English comments in the commands) and the Russian projection of the source is
+`quickstart.ru.md`. So the check by content takes `<page>.ru.md` when the clone has
+it and the pinned path otherwise (a monolingual or shallow clone of the superproject
+itself): the plan is compared with the same page it was pinned from.
 
     python3 ci/quickstart.py pin status --superproject ../taimen
 
@@ -83,7 +96,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 PIN_FILE = REPO / "ci" / "quickstart-pin.json"
+# Where each component lies in the tree of the installation, by its stable name (TAI-ADR-0064).
+LAYOUT_FILE = REPO / "src" / "package_sdk" / "layout.json"
 PAGE_NAME = "quickstart.md"
+# The Russian projection of a source page in the bilingual umbrella (mkdocs-static-i18n,
+# docs_structure: suffix — English is the default, Russian is `<page>.ru.md`).
+RU_SUFFIX = ".ru.md"
 
 MARKER = re.compile(r"^\s*<!--\s*quickstart:\s*(?P<body>.*?)\s*-->\s*$")
 MARKER_LOOSE = re.compile(r"<!--\s*quickstart\b")
@@ -91,10 +109,11 @@ MARKER_CONTINUED = re.compile(r"^\s*quickstart\s*:")
 FENCE = re.compile(r"^(?P<indent>[ \t]*)(?P<fence>`{3,}|~{3,})\s*(?P<info>[^`\s]*)[^`]*$")
 SHELL = {"bash", "sh", "shell"}
 DATA = {"yaml", "yml", "json", "toml"}
-# Блоки, которые страница показывает, а не исполняет: вывод команд и схемы.
+# Blocks the page shows rather than executes: command output and diagrams.
 ILLUSTRATION = {"text", "txt", "output", "mermaid"}
 
-# Ветка локальных зеркал соседей, которой подменяются теги выпуска на странице.
+# The branch of the neighbours' local mirrors that replaces the page's release tags.
+# The keys are the page's own placeholders and stay as the page writes them.
 TAG = "quickstart"
 PLACEHOLDERS = {"<тег>": TAG, "<тег ядра>": TAG}
 PLACEHOLDER = re.compile(r"<[^\s<>][^<>\n]*>")
@@ -103,8 +122,8 @@ CLONE = re.compile(
 )
 DOCKER_NAME = re.compile(r"\bdocker\s+run\b[^\n]*?--name[ =](?P<name>[\w.-]+)")
 
-# Окружение, которое проходит в чистый каталог; остальное (токены, VIRTUAL_ENV,
-# адрес базы песочницы, PYTHONPATH) отсекается.
+# Environment that passes into the clean directory; the rest (tokens, VIRTUAL_ENV,
+# the sandbox database address, PYTHONPATH) is cut off.
 PASS_ENV = (
     "PATH",
     "LANG",
@@ -132,16 +151,16 @@ PASS_ENV = (
 
 
 class QuickstartError(Exception):
-    """Страница не извлекается или прогон не прошёл."""
+    """The page does not extract or the run failed."""
 
 
 class PageMissing(QuickstartError):
-    """Закреплённый коммит в клоне зонтика недостижим, а страницы на голове нет."""
+    """The pinned commit is unreachable in the umbrella clone and the head has no page."""
 
 
 @dataclass(frozen=True)
 class Step:
-    """Шаг страницы: команды оболочки или файл."""
+    """A page step: shell commands or a file."""
 
     line: int
     kind: str  # "run" | "file" | "skip"
@@ -153,9 +172,9 @@ class Step:
     without_docker_output: str | None = None
 
     def canonical(self) -> dict[str, object]:
-        """Смысл шага без номера строки: из него считается отпечаток плана."""
+        """The step's meaning without the line number: the plan fingerprint is computed from it."""
         data: dict[str, object] = {"kind": self.kind, "text": self.text}
-        # Причина пропуска — проза, в отпечаток не входит.
+        # The skip reason is prose and is not part of the fingerprint.
         for key in ("path", "requires_docker", "without_docker_exit", "without_docker_output"):
             value = getattr(self, key)
             if value not in (None, False):
@@ -172,15 +191,15 @@ class Page:
         return [step for step in self.steps if step.kind != "skip"]
 
     def plan_hash(self) -> str:
-        # Пропущенные блоки входят в отпечаток тоже: их команды не исполняются, но их
-        # правка на странице должна дойти до SDK, как и правка исполняемых.
+        # Skipped blocks are part of the fingerprint too: their commands are not executed,
+        # but editing them on the page must reach the SDK, as editing executed ones does.
         body = json.dumps(
             [step.canonical() for step in self.steps], ensure_ascii=False, sort_keys=True
         )
         return "sha256:" + hashlib.sha256(body.encode("utf-8")).hexdigest()
 
     def clones(self) -> dict[str, str]:
-        """URL клона → имя репозитория по всем исполняемым блокам."""
+        """Clone URL → repository name over all executed blocks."""
         found: dict[str, str] = {}
         for step in self.executed:
             if step.kind == "run":
@@ -196,27 +215,27 @@ class Page:
         return names
 
 
-# --- извлечение -------------------------------------------------------------------
+# --- extraction --------------------------------------------------------------------
 
 
 def _blocks(text: str) -> Iterator[tuple[int, str, str, str | None, int | None]]:
-    """(строка ограды, язык, содержимое, тело разметки, строка разметки)."""
+    """(fence line, language, content, markup body, markup line)."""
     lines = text.splitlines()
     marker: tuple[str, int] | None = None
-    comment: int | None = None  # строка начала многострочного HTML-комментария
+    comment: int | None = None  # first line of a multi-line HTML comment
     index = 0
     while index < len(lines):
         line = lines[index]
         if comment is not None:
             if MARKER_CONTINUED.match(line) or MARKER_LOOSE.search(line):
                 raise QuickstartError(
-                    f"{PAGE_NAME}:{index + 1}: разметка quickstart в многострочном комментарии "
-                    f"(с строки {comment}) — пишите её одной строкой <!-- quickstart: … -->"
+                    f"{PAGE_NAME}:{index + 1}: quickstart markup in a multi-line comment "
+                    f"(from line {comment}) — write it as one line <!-- quickstart: … -->"
                 )
             if FENCE.match(line):
                 raise QuickstartError(
-                    f"{PAGE_NAME}:{index + 1}: блок кода внутри HTML-комментария (с строки "
-                    f"{comment}) — извлекатель его не исполняет"
+                    f"{PAGE_NAME}:{index + 1}: a code block inside an HTML comment (from line "
+                    f"{comment}) — the extractor does not execute it"
                 )
             if "-->" in line:
                 comment = None
@@ -226,15 +245,15 @@ def _blocks(text: str) -> Iterator[tuple[int, str, str, str | None, int | None]]
         if found:
             if marker is not None:
                 raise QuickstartError(
-                    f"{PAGE_NAME}:{marker[1]}: разметка без блока кода — следом идёт "
-                    f"другая разметка (строка {index + 1})"
+                    f"{PAGE_NAME}:{marker[1]}: markup without a code block — another markup "
+                    f"follows (line {index + 1})"
                 )
             marker = (found["body"], index + 1)
             index += 1
             continue
         if MARKER_LOOSE.search(line):
             raise QuickstartError(
-                f"{PAGE_NAME}:{index + 1}: разметка quickstart должна занимать строку целиком: "
+                f"{PAGE_NAME}:{index + 1}: quickstart markup must take the whole line: "
                 f"{line.strip()}"
             )
         fence = FENCE.match(line)
@@ -253,7 +272,7 @@ def _blocks(text: str) -> Iterator[tuple[int, str, str, str | None, int | None]]
                 body.append(raw[strip:])
                 index += 1
             else:
-                raise QuickstartError(f"{PAGE_NAME}:{start}: блок кода не закрыт")
+                raise QuickstartError(f"{PAGE_NAME}:{start}: the code block is not closed")
             content = "\n".join(body) + ("\n" if body else "")
             yield (
                 start,
@@ -267,25 +286,27 @@ def _blocks(text: str) -> Iterator[tuple[int, str, str, str | None, int | None]]
             continue
         if marker is not None and line.strip():
             raise QuickstartError(
-                f"{PAGE_NAME}:{marker[1]}: разметка «{marker[0]}» не стоит прямо перед блоком "
-                f"кода (строка {index + 1} — текст)"
+                f'{PAGE_NAME}:{marker[1]}: markup "{marker[0]}" is not right before a code '
+                f"block (line {index + 1} is text)"
             )
         opened = line.rfind("<!--")
         if opened != -1 and "-->" not in line[opened:]:
             comment = index + 1
         index += 1
     if marker is not None:
-        raise QuickstartError(f"{PAGE_NAME}:{marker[1]}: разметка без блока кода в конце страницы")
+        raise QuickstartError(
+            f"{PAGE_NAME}:{marker[1]}: markup without a code block at the end of the page"
+        )
     if comment is not None:
-        raise QuickstartError(f"{PAGE_NAME}:{comment}: HTML-комментарий не закрыт")
+        raise QuickstartError(f"{PAGE_NAME}:{comment}: the HTML comment is not closed")
 
 
 def _substitute(text: str, line: int) -> str:
     for found in PLACEHOLDER.findall(text):
         if found not in PLACEHOLDERS:
             raise QuickstartError(
-                f"{PAGE_NAME}:{line}: неизвестная подстановка {found} — добавьте её в "
-                f"PLACEHOLDERS ci/quickstart.py или уберите со страницы"
+                f"{PAGE_NAME}:{line}: unknown placeholder {found} — add it to "
+                f"PLACEHOLDERS in ci/quickstart.py or remove it from the page"
             )
     for key, value in PLACEHOLDERS.items():
         text = text.replace(key, value)
@@ -296,7 +317,7 @@ def _file_path(value: str, line: int) -> str:
     path = Path(value)
     if not value or path.is_absolute() or ".." in path.parts:
         raise QuickstartError(
-            f"{PAGE_NAME}:{line}: путь файла «{value}» — только относительный, без «..»"
+            f'{PAGE_NAME}:{line}: file path "{value}" — relative only, without ".."'
         )
     return path.as_posix()
 
@@ -306,7 +327,7 @@ def _directive(body: str, marker_line: int, line: int, lang: str, content: str) 
     rest = rest.strip()
     if word == "skip":
         if not rest:
-            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: skip без причины")
+            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: skip without a reason")
         return Step(line=line, kind="skip", text=content, reason=rest)
     if word == "file":
         return Step(
@@ -317,11 +338,11 @@ def _directive(body: str, marker_line: int, line: int, lang: str, content: str) 
         )
     if lang not in SHELL:
         raise QuickstartError(
-            f"{PAGE_NAME}:{marker_line}: «{word}» — только для блоков оболочки, здесь «{lang}»"
+            f'{PAGE_NAME}:{marker_line}: "{word}" is for shell blocks only, here "{lang}"'
         )
     if word == "requires":
         if rest != "docker":
-            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: requires знает только docker")
+            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: requires knows only docker")
         return Step(line=line, kind="run", text=_substitute(content, line), requires_docker=True)
     if word == "without-docker":
         options: dict[str, str] = {}
@@ -329,11 +350,11 @@ def _directive(body: str, marker_line: int, line: int, lang: str, content: str) 
             key, sep, value = token.partition("=")
             if not sep or key not in {"exit", "output"} or key in options:
                 raise QuickstartError(
-                    f"{PAGE_NAME}:{marker_line}: without-docker exit=<код> [output=<строка>]"
+                    f"{PAGE_NAME}:{marker_line}: without-docker exit=<code> [output=<string>]"
                 )
             options[key] = value
         if not options.get("exit", "").isdigit():
-            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: without-docker без exit=<код>")
+            raise QuickstartError(f"{PAGE_NAME}:{marker_line}: without-docker without exit=<code>")
         return Step(
             line=line,
             kind="run",
@@ -341,11 +362,11 @@ def _directive(body: str, marker_line: int, line: int, lang: str, content: str) 
             without_docker_exit=int(options["exit"]),
             without_docker_output=options.get("output") or None,
         )
-    raise QuickstartError(f"{PAGE_NAME}:{marker_line}: неизвестная разметка «{body}»")
+    raise QuickstartError(f'{PAGE_NAME}:{marker_line}: unknown markup "{body}"')
 
 
 def extract(text: str) -> Page:
-    """Шаги страницы по порядку. Ошибка разметки — QuickstartError с номером строки."""
+    """The page's steps in order. A markup error is a QuickstartError with the line number."""
     page = Page()
     for line, lang, content, body, marker_line in _blocks(text):
         if body is not None and marker_line is not None:
@@ -353,18 +374,18 @@ def extract(text: str) -> Page:
         elif lang in SHELL:
             page.steps.append(Step(line=line, kind="run", text=_substitute(content, line)))
         elif lang not in ILLUSTRATION:
-            kind = f"блок «{lang}»" if lang else "блок без языка"
+            kind = f'block "{lang}"' if lang else "block without a language"
             raise QuickstartError(
-                f"{PAGE_NAME}:{line}: {kind} без разметки не исполняется и не иллюстрация — "
-                f"язык из {sorted(SHELL)} или {sorted(ILLUSTRATION)}, либо "
-                f"<!-- quickstart: file <путь> --> / <!-- quickstart: skip <причина> -->"
+                f"{PAGE_NAME}:{line}: {kind} without markup is neither executed nor an "
+                f"illustration — a language from {sorted(SHELL)} or {sorted(ILLUSTRATION)}, or "
+                f"<!-- quickstart: file <path> --> / <!-- quickstart: skip <reason> -->"
             )
     if not page.executed:
-        raise QuickstartError(f"{PAGE_NAME}: на странице нет исполняемых шагов")
+        raise QuickstartError(f"{PAGE_NAME}: the page has no executable steps")
     return page
 
 
-# --- сценарий оболочки -----------------------------------------------------------
+# --- shell script ------------------------------------------------------------------
 
 
 def _heredoc_tag(content: str) -> str:
@@ -375,24 +396,24 @@ def _heredoc_tag(content: str) -> str:
 
 
 def render(page: Page, *, docker: bool) -> str:
-    """Один сценарий bash: каталог и переменные переходят из блока в блок, как у читателя."""
+    """One bash script: the directory and variables carry from block to block, as for a reader."""
     out = [
         "set -euo pipefail",
         "qs_block=0",
-        "trap 'rc=$?; echo \"quickstart: провал в блоке quickstart.md:$qs_block (код $rc)\" >&2'"
-        " ERR",
+        "trap 'rc=$?; echo \"quickstart: failed in block quickstart.md:$qs_block"
+        " (exit code $rc)\" >&2' ERR",
     ]
     containers: list[str] = []
     for step in page.steps:
         where = f"quickstart.md:{step.line}"
         out.append(f"qs_block={step.line}")
         if step.kind == "skip":
-            out.append(f"echo {shlex.quote(f'== {where}: пропуск — {step.reason}')}")
+            out.append(f"echo {shlex.quote(f'== {where}: skipped — {step.reason}')}")
             continue
         if step.kind == "file":
             assert step.path is not None
             tag = _heredoc_tag(step.text)
-            out.append(f'echo "== {where} [+${{SECONDS}}s]: файл "{shlex.quote(step.path)}')
+            out.append(f'echo "== {where} [+${{SECONDS}}s]: file "{shlex.quote(step.path)}')
             parent = str(Path(step.path).parent)
             if parent != ".":
                 out.append(f"mkdir -p {shlex.quote(parent)}")
@@ -400,15 +421,15 @@ def render(page: Page, *, docker: bool) -> str:
             continue
         shown = "".join(f"$ {line}\n" for line in step.text.splitlines())
         if step.requires_docker and not docker:
-            out.append(f"echo {shlex.quote(f'== {where}: пропуск — нужен Docker (--db none)')}")
+            out.append(f"echo {shlex.quote(f'== {where}: skipped — needs Docker (--db none)')}")
             continue
         out.append(f'echo "== {where} [+${{SECONDS}}s]"')
         out.append(f"printf '%s' {shlex.quote(shown)}")
         if step.without_docker_exit is not None and not docker:
             expected = step.without_docker_exit
             tag = _heredoc_tag(step.text)
-            # Отдельный процесс bash: внутри `… && … || …` set -e подоболочки не действует
-            # и промежуточный сбой блока прошёл бы незамеченным.
+            # A separate bash process: inside `… && … || …` the subshell's set -e does not
+            # apply and an intermediate failure in the block would go unnoticed.
             out += [
                 'qs_step="$(mktemp)"',
                 'qs_log="$(mktemp)"',
@@ -416,14 +437,16 @@ def render(page: Page, *, docker: bool) -> str:
                 'bash -eo pipefail "$qs_step" >"$qs_log" 2>&1 && qs_rc=0 || qs_rc=$?',
                 'cat "$qs_log"',
                 f'if [ "$qs_rc" -ne {expected} ]; then',
-                f'  echo "quickstart: {where} без Docker ждёт код {expected}, получен $qs_rc" >&2',
+                f'  echo "quickstart: {where} without Docker expects exit code {expected},'
+                ' got $qs_rc" >&2',
                 "  exit 1",
                 "fi",
             ]
             if step.without_docker_output:
                 needle = shlex.quote(step.without_docker_output)
                 missing = (
-                    f"quickstart: {where} без Docker не напечатал «{step.without_docker_output}»"
+                    f"quickstart: {where} without Docker did not print "
+                    f'"{step.without_docker_output}"'
                 )
                 out += [
                     f'if ! grep -qF -- {needle} "$qs_log"; then',
@@ -431,28 +454,29 @@ def render(page: Page, *, docker: bool) -> str:
                     "  exit 1",
                     "fi",
                 ]
-            out.append(f"echo {shlex.quote(f'   ожидаемо без Docker: код {expected}')}")
+            done = f"   as expected without Docker: exit code {expected}"
+            out.append(f"echo {shlex.quote(done)}")
             continue
         if step.requires_docker:
-            # Контейнер запускает этот прогон — он его и останавливает, даже при провале
-            # посреди блока. Чужого контейнера с тем же именем нет: run_page проверил.
+            # This run starts the container, so it stops it too, even on a failure in the
+            # middle of the block. No foreign container has the same name: run_page checked.
             containers += [match["name"] for match in DOCKER_NAME.finditer(step.text)]
             if containers:
                 names = " ".join(shlex.quote(name) for name in containers)
                 out.append(f"trap 'docker stop {names} >/dev/null 2>&1 || true' EXIT")
         out.append(step.text.rstrip("\n"))
-    out.append('echo "== конец страницы [+${SECONDS}s]"')
+    out.append('echo "== end of page [+${SECONDS}s]"')
     return "\n".join(out) + "\n"
 
 
-# --- закрепление -------------------------------------------------------------------
+# --- pinning -----------------------------------------------------------------------
 
 
 def load_pin(path: Path = PIN_FILE) -> dict[str, str]:
     data = json.loads(path.read_text(encoding="utf-8"))
     missing = {"ref", "path", "commit", "plan"} - set(data)
     if missing:
-        raise QuickstartError(f"{path.name}: нет полей {sorted(missing)}")
+        raise QuickstartError(f"{path.name}: missing fields {sorted(missing)}")
     return {key: str(value) for key, value in data.items()}
 
 
@@ -466,7 +490,7 @@ def _git(*args: str, cwd: Path) -> str:
 
 
 def page_at(superproject: Path, rev: str, path: str) -> tuple[str, str]:
-    """(полный sha коммита, текст страницы на нём)."""
+    """(full commit sha, the page text at it)."""
     commit = _git("rev-parse", "--verify", f"{rev}^{{commit}}", cwd=superproject).strip()
     return commit, _git("show", f"{commit}:{path}", cwd=superproject)
 
@@ -477,7 +501,7 @@ def _git_ok(*args: str, cwd: Path) -> bool:
 
 
 def commit_reachable(superproject: Path, commit: str) -> bool:
-    """Есть ли закреплённый коммит в клоне (в публичной проекции зонтика его нет)."""
+    """Whether the pinned commit is in the clone (the public umbrella projection lacks it)."""
     return bool(commit) and _git_ok("cat-file", "-e", f"{commit}^{{commit}}", cwd=superproject)
 
 
@@ -485,45 +509,67 @@ def page_exists(superproject: Path, rev: str, path: str) -> bool:
     return _git_ok("cat-file", "-e", f"{rev}:{path}", cwd=superproject)
 
 
-def pinned_page(superproject: Path, pin: dict[str, str], head: str = "HEAD") -> tuple[str, str]:
-    """(коммит, текст) страницы, которую исполняет `run`, сверенной с закреплением.
+def ru_projection(path: str) -> str:
+    """`<page>.md` → `<page>.ru.md`: where the umbrella keeps the source (Russian) page."""
+    if path.endswith(RU_SUFFIX) or not path.endswith(".md"):
+        return path
+    return path[: -len(".md")] + RU_SUFFIX
 
-    Закреплённый коммит достижим — страница на нём. Недостижим (публичный зонтик) —
-    страница на `head`, если её план равен закреплённому: сверка по содержимому.
+
+def content_path(superproject: Path, rev: str, path: str) -> str | None:
+    """The page compared by content at `rev`: the Russian projection, else the pinned path.
+
+    In the bilingual umbrella `path` is the English translation, and its plan never equals
+    the one pinned from the Russian source; a monolingual clone has only `path`.
+    """
+    for candidate in (ru_projection(path), path):
+        if page_exists(superproject, rev, candidate):
+            return candidate
+    return None
+
+
+def pinned_page(superproject: Path, pin: dict[str, str], head: str = "HEAD") -> tuple[str, str]:
+    """(commit, text) of the page `run` executes, checked against the pin.
+
+    The pinned commit is reachable — the page at it. Unreachable (public umbrella) —
+    the page at `head` if its plan equals the pinned one: a check by content (the
+    umbrella's `<page>.ru.md` when it is there, see content_path).
     """
     by_commit = commit_reachable(superproject, pin["commit"])
-    if not by_commit and not page_exists(superproject, head, pin["path"]):
+    path = pin["path"] if by_commit else content_path(superproject, head, pin["path"])
+    if path is None:
         raise PageMissing(
-            f"страница {pin['path']} ещё не опубликована в зонтике: её нет на {head}, "
-            f"а закреплённый коммит {pin['commit'][:12]} в клоне недостижим"
+            f"page {pin['path']} is not published in the umbrella yet: it is not at {head} "
+            f"(nor {ru_projection(pin['path'])}), and the pinned commit {pin['commit'][:12]} "
+            f"is unreachable in the clone"
         )
-    commit, text = page_at(superproject, pin["commit"] if by_commit else head, pin["path"])
+    commit, text = page_at(superproject, pin["commit"] if by_commit else head, path)
     plan = extract(text).plan_hash()
     if plan != pin["plan"]:
         if by_commit:
             raise QuickstartError(
-                f"план страницы на {commit[:12]} ({plan}) не равен закреплённому "
+                f"the page plan at {commit[:12]} ({plan}) does not equal the pinned one "
                 f"({pin['plan']}) — `pin update`"
             )
         raise QuickstartError(
-            f"страница изменилась — `pin update`: план {pin['path']} на {head} "
-            f"({commit[:12]}, {plan}) не равен закреплённому ({pin['plan']}); закреплённый "
-            f"коммит {pin['commit'][:12]} в клоне недостижим, сверка по содержимому"
+            f"the page changed — `pin update`: the plan of {path} at {head} "
+            f"({commit[:12]}, {plan}) does not equal the pinned one ({pin['plan']}); the pinned "
+            f"commit {pin['commit'][:12]} is unreachable in the clone, checked by content"
         )
     return commit, text
 
 
 def pin_status(superproject: Path, against: str = "HEAD", pin_path: Path = PIN_FILE) -> str:
-    """Строки key=value для CI: page=present|missing, mode=commit|content|missing."""
+    """key=value lines for CI: page=present|missing, mode=commit|content|missing."""
     pin = load_pin(pin_path)
+    path: str | None = pin["path"]
     if commit_reachable(superproject, pin["commit"]):
         mode = "commit"
-    elif page_exists(superproject, against, pin["path"]):
-        mode = "content"
     else:
-        mode = "missing"
+        path = content_path(superproject, against, pin["path"])
+        mode = "content" if path is not None else "missing"
     page = "missing" if mode == "missing" else "present"
-    return f"page={page}\nmode={mode}\npath={pin['path']}"
+    return f"page={page}\nmode={mode}\npath={path or pin['path']}"
 
 
 def pin_check(superproject: Path, against: str, pin_path: Path = PIN_FILE) -> str:
@@ -531,31 +577,29 @@ def pin_check(superproject: Path, against: str, pin_path: Path = PIN_FILE) -> st
     if not commit_reachable(superproject, pin["commit"]):
         head_commit, _ = pinned_page(superproject, pin, against)
         return (
-            f"ok: закреплённый коммит {pin['commit'][:12]} в клоне недостижим, план страницы "
-            f"на {against} ({head_commit[:12]}) равен закреплённому — сверка по содержимому"
+            f"ok: the pinned commit {pin['commit'][:12]} is unreachable in the clone, the page "
+            f"plan at {against} ({head_commit[:12]}) equals the pinned one — checked by content"
         )
     _, pinned_text = page_at(superproject, pin["commit"], pin["path"])
     pinned = extract(pinned_text)
     if pinned.plan_hash() != pin["plan"]:
         raise QuickstartError(
-            f"закрепление {pin['commit'][:12]}: план страницы {pinned.plan_hash()} не равен "
-            f"закреплённому {pin['plan']} — извлекатель или файл закрепления правлены "
-            f"без `pin update`"
+            f"pin {pin['commit'][:12]}: the page plan {pinned.plan_hash()} does not equal "
+            f"the pinned {pin['plan']} — the extractor or the pin file was edited "
+            f"without `pin update`"
         )
     head_commit, head_text = page_at(superproject, against, pin["path"])
     head = extract(head_text)
     if head.plan_hash() != pin["plan"]:
         diff = _plan_diff(pinned, head)
         raise QuickstartError(
-            f"команды или файлы {pin['path']} изменились после закрепления "
-            f"({pin['commit'][:12]} → {head_commit[:12]}), а SDK не обновлён:\n{diff}\n"
-            f"Проверьте страницу прогоном и сдвиньте закрепление: "
+            f"the commands or files of {pin['path']} changed after pinning "
+            f"({pin['commit'][:12]} → {head_commit[:12]}) and the SDK was not updated:\n{diff}\n"
+            f"Check the page with a run and move the pin: "
             f"python3 ci/quickstart.py pin update --superproject … --rev {against}"
         )
-    note = "" if head_text == pinned_text else " (проза страницы менялась, команды — нет)"
-    return (
-        f"ok: закрепление {pin['commit'][:12]} актуально для {against} ({head_commit[:12]}){note}"
-    )
+    note = "" if head_text == pinned_text else " (the page prose changed, the commands did not)"
+    return f"ok: pin {pin['commit'][:12]} is up to date for {against} ({head_commit[:12]}){note}"
 
 
 def _plan_diff(old: Page, new: Page) -> str:
@@ -565,7 +609,7 @@ def _plan_diff(old: Page, new: Page) -> str:
         return render(page, docker=True).splitlines()
 
     return "\n".join(
-        difflib.unified_diff(lines(old), lines(new), "закреплено", "голова", lineterm="", n=1)
+        difflib.unified_diff(lines(old), lines(new), "pinned", "head", lineterm="", n=1)
     )
 
 
@@ -575,16 +619,16 @@ def pin_update(superproject: Path, rev: str, pin_path: Path = PIN_FILE) -> str:
     pin["commit"] = commit
     pin["plan"] = extract(text).plan_hash()
     pin_path.write_text(json.dumps(pin, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    return f"закреплено: {commit} {pin['plan']}"
+    return f"pinned: {commit} {pin['plan']}"
 
 
-# --- прогон ------------------------------------------------------------------------
+# --- run ---------------------------------------------------------------------------
 
 
 def _mirror(source: Path, mirror: Path) -> None:
-    """Голое зеркало с веткой TAG на HEAD соседа (и из поверхностного клона CI)."""
+    """A bare mirror with branch TAG at the neighbour's HEAD (from a shallow CI clone too)."""
     if not (source / ".git").exists():
-        raise QuickstartError(f"сосед {source} — не git-клон")
+        raise QuickstartError(f"neighbour {source} is not a git clone")
     subprocess.run(["git", "init", "--quiet", "--bare", str(mirror)], check=True)
     subprocess.run(
         ["git", "-C", str(mirror), "config", "receive.shallowUpdate", "true"], check=True
@@ -630,7 +674,7 @@ def _environment(work: Path, uv_cache: Path | None) -> dict[str, str]:
     env.setdefault("LANG", "C.UTF-8")
     real_docker = Path.home() / ".docker"
     if "DOCKER_CONFIG" not in env and real_docker.is_dir():
-        # Контекст Docker Desktop живёт в ~/.docker — без него CLI не найдёт демон.
+        # The Docker Desktop context lives in ~/.docker — without it the CLI misses the daemon.
         env["DOCKER_CONFIG"] = str(real_docker)
     return env
 
@@ -661,7 +705,7 @@ def _rmtree(path: Path) -> None:
 
 
 def _stop(process: subprocess.Popen[bytes], containers: list[str]) -> None:
-    """Снять группу процессов прогона и его контейнеры."""
+    """Take down the run's process group and its containers."""
     for sig, grace in ((signal.SIGTERM, 15.0), (signal.SIGKILL, None)):
         try:
             os.killpg(process.pid, sig)
@@ -672,7 +716,7 @@ def _stop(process: subprocess.Popen[bytes], containers: list[str]) -> None:
             break
         except subprocess.TimeoutExpired:
             continue
-    # Лидер группы мог выйти раньше детей: добить оставшихся.
+    # The group leader may have exited before its children: kill the rest.
     with contextlib.suppress(ProcessLookupError):
         os.killpg(process.pid, signal.SIGKILL)
     for name in containers:
@@ -682,6 +726,18 @@ def _stop(process: subprocess.Popen[bytes], containers: list[str]) -> None:
 
 def _terminate(signum: int, _frame: object) -> None:
     raise SystemExit(128 + signum)
+
+
+def layout() -> dict[str, str]:
+    """Component name → its path in the tree of the installation (the SDK's layout manifest)."""
+    components = json.loads(LAYOUT_FILE.read_text(encoding="utf-8"))["components"]
+    return {str(name): str(path) for name, path in components.items()}
+
+
+def installation_root() -> Path:
+    """The root of the installation this clone of package-sdk lies in, by the layout."""
+    depth = len(Path(layout().get("package-sdk", REPO.name)).parts)
+    return REPO.parents[depth - 1]
 
 
 def run_page(
@@ -694,17 +750,17 @@ def run_page(
     keep: bool = False,
     uv_cache: Path | None = None,
 ) -> float:
-    """Исполнить страницу в чистом каталоге. Возвращает длительность в секундах."""
+    """Execute the page in a clean directory. Returns the duration in seconds."""
     docker = db == "docker"
     names = page.docker_names() if docker else []
     if docker:
         if not _docker_available():
-            raise QuickstartError("--db docker: Docker недоступен; без него — --db none")
+            raise QuickstartError("--db docker: Docker is not available; without it use --db none")
         busy = [name for name in names if _container_exists(name)]
         if busy:
             raise QuickstartError(
-                f"контейнер {', '.join(busy)} уже есть — страница создаёт его сама; "
-                f"остановите чужой прогон или дождитесь его"
+                f"container {', '.join(busy)} already exists — the page creates it itself; "
+                f"stop the other run or wait for it"
             )
     work = Path(tempfile.mkdtemp(prefix="quickstart-", dir=workdir)).resolve()
     started = time.monotonic()
@@ -713,7 +769,10 @@ def run_page(
         mirrors.mkdir()
         config: list[str] = []
         for url, name in sorted(page.clones().items()):
-            source = REPO if name == REPO.name or name == "package-sdk" else neighbours / name
+            if name == REPO.name or name == "package-sdk":
+                source = REPO
+            else:
+                source = neighbours.joinpath(*Path(layout().get(name, name)).parts)
             target = mirrors / f"{name}.git"
             if not target.exists():
                 _mirror(source, target)
@@ -724,27 +783,27 @@ def run_page(
         root.mkdir()
         script = work / "quickstart.sh"
         script.write_text(render(page, docker=docker), encoding="utf-8")
-        print(f"quickstart: каталог {work}, база: {db}, лимит {timeout} с", flush=True)
+        print(f"quickstart: directory {work}, database: {db}, limit {timeout} s", flush=True)
         process = subprocess.Popen(["bash", str(script)], cwd=root, env=env, start_new_session=True)
         try:
             code = process.wait(timeout=timeout)
         except BaseException as error:
-            # Лимит, SIGTERM (main превращает его в SystemExit) или Ctrl-C: снять всю
-            # сессию bash и контейнер базы, который запустил этот прогон.
+            # The limit, SIGTERM (main turns it into SystemExit) or Ctrl-C: take down the
+            # whole bash session and the database container this run started.
             _stop(process, names)
             if isinstance(error, subprocess.TimeoutExpired):
                 raise QuickstartError(
-                    f"быстрый старт не уложился в {timeout} с — прерван"
+                    f"the quickstart did not fit in {timeout} s — interrupted"
                 ) from None
             raise
         elapsed = time.monotonic() - started
         if code != 0:
             keep = True
-            raise QuickstartError(f"быстрый старт упал (код {code}) за {elapsed:.0f} с")
+            raise QuickstartError(f"the quickstart failed (exit code {code}) after {elapsed:.0f} s")
         return elapsed
     finally:
         if keep:
-            print(f"quickstart: каталог прогона сохранён — {work}", file=sys.stderr)
+            print(f"quickstart: the run directory is kept — {work}", file=sys.stderr)
         else:
             _rmtree(work)
 
@@ -769,43 +828,48 @@ def main(argv: list[str] | None = None) -> int:
 
     def source(p: argparse.ArgumentParser) -> None:
         group = p.add_mutually_exclusive_group(required=True)
-        group.add_argument("--page", help="файл страницы (без закрепления)")
-        group.add_argument("--superproject", help="клон суперпроекта: страница на закреплении")
-        p.add_argument("--rev", help="ревизия суперпроекта вместо закреплённой")
+        group.add_argument("--page", help="page file (no pin)")
+        group.add_argument("--superproject", help="superproject clone: the page at the pin")
+        p.add_argument("--rev", help="superproject revision instead of the pinned one")
 
-    extract_cmd = sub.add_parser("extract", help="напечатать сценарий, ничего не исполняя")
+    extract_cmd = sub.add_parser("extract", help="print the script without executing anything")
     source(extract_cmd)
     extract_cmd.add_argument("--db", choices=["docker", "none"], default="docker")
 
-    run_cmd = sub.add_parser("run", help="исполнить страницу в чистом каталоге")
+    run_cmd = sub.add_parser("run", help="execute the page in a clean directory")
     source(run_cmd)
     run_cmd.add_argument(
         "--db",
         choices=["docker", "none"],
         default="docker",
-        help="docker — база песочницы контейнером со страницы; none — без Docker "
-        "(блоки requires docker пропускаются, without-docker ждут своего кода)",
+        help="docker: the sandbox database as the page's container; none: without Docker "
+        "(requires docker blocks are skipped, without-docker blocks expect their exit code)",
     )
-    run_cmd.add_argument("--neighbours", default=str(REPO.parent), help="каталог соседних клонов")
-    run_cmd.add_argument("--timeout", type=int, default=600, help="лимит, секунды (SC-001)")
-    run_cmd.add_argument("--workdir", help="где создать каталог прогона")
-    run_cmd.add_argument("--uv-cache", help="кэш uv (по умолчанию пустой, как в чистой среде)")
-    run_cmd.add_argument("--keep", action="store_true", help="не удалять каталог прогона")
+    run_cmd.add_argument(
+        "--neighbours",
+        default=str(installation_root()),
+        help="root of the installation with the neighbouring clones, laid out as in "
+        "src/package_sdk/layout.json",
+    )
+    run_cmd.add_argument("--timeout", type=int, default=600, help="limit, seconds (SC-001)")
+    run_cmd.add_argument("--workdir", help="where to create the run directory")
+    run_cmd.add_argument("--uv-cache", help="uv cache (empty by default, as in a clean setup)")
+    run_cmd.add_argument("--keep", action="store_true", help="do not remove the run directory")
 
-    pin_cmd = sub.add_parser("pin", help="закрепление ревизии суперпроекта")
+    pin_cmd = sub.add_parser("pin", help="pinning of the superproject revision")
     pin_sub = pin_cmd.add_subparsers(dest="pin_command", required=True)
-    check_cmd = pin_sub.add_parser("check", help="команды страницы на голове = закреплённые")
+    check_cmd = pin_sub.add_parser("check", help="the page commands at the head = the pinned ones")
     check_cmd.add_argument("--superproject", required=True)
-    check_cmd.add_argument("--against", default="HEAD", help="ревизия головы (по умолчанию HEAD)")
-    update_cmd = pin_sub.add_parser("update", help="закрепить ревизию")
+    check_cmd.add_argument("--against", default="HEAD", help="head revision (HEAD by default)")
+    update_cmd = pin_sub.add_parser("update", help="pin a revision")
     update_cmd.add_argument("--superproject", required=True)
     update_cmd.add_argument("--rev", default="HEAD")
     status_cmd = pin_sub.add_parser(
-        "status", help="есть ли страница в клоне зонтика: page=present|missing (для CI)"
+        "status", help="whether the umbrella clone has the page: page=present|missing (for CI)"
     )
     status_cmd.add_argument("--superproject", required=True)
-    status_cmd.add_argument("--against", default="HEAD", help="ревизия головы (по умолчанию HEAD)")
-    pin_sub.add_parser("show", help="поля закрепления строками key=value")
+    status_cmd.add_argument("--against", default="HEAD", help="head revision (HEAD by default)")
+    pin_sub.add_parser("show", help="pin fields as key=value lines")
 
     args = parser.parse_args(argv)
     signal.signal(signal.SIGTERM, _terminate)
@@ -823,7 +887,7 @@ def main(argv: list[str] | None = None) -> int:
                 keep=args.keep,
                 uv_cache=Path(args.uv_cache).resolve() if args.uv_cache else None,
             )
-            print(f"ok: быстрый старт за {elapsed:.0f} с (лимит {args.timeout} с), база: {args.db}")
+            print(f"ok: quickstart in {elapsed:.0f} s (limit {args.timeout} s), db: {args.db}")
         elif args.pin_command == "check":
             print(pin_check(Path(args.superproject), args.against))
         elif args.pin_command == "update":
@@ -837,7 +901,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"quickstart: {error}", file=sys.stderr)
         return 1
     except KeyboardInterrupt:
-        print("quickstart: прервано", file=sys.stderr)
+        print("quickstart: interrupted", file=sys.stderr)
         return 130
     return 0
 

@@ -1,0 +1,8 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+process: claim
+name: a claim above the refund threshold goes to a person
+given:
+  settings: {escalationRole: claims, refundThreshold: 50000}
+steps:
+  - emit: {observation: helpdesk.ticket_created, payload: {ticketId: T-1, amount: 72000}}
+  - expect: {status: running, tasks: [{step: decide-claim}]}

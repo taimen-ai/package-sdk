@@ -1,0 +1,10 @@
+process: claim
+name: a raised refund threshold applies to the next claim
+given:
+  settings: {refundThreshold: 50000}
+steps:
+  - emit: {observation: helpdesk.ticket_created, payload: {ticketId: T-1, amount: 72000}}
+  - expect: {status: running}
+  - settings: {refundThreshold: 100000}
+  - emit: {observation: helpdesk.ticket_created, payload: {ticketId: T-2, amount: 72000}}
+  - expect: {status: completed}

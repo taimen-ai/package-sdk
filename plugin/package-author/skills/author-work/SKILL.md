@@ -54,7 +54,9 @@ description: Описать работу в пакете каталога — т
          status: {category: terminal_success}
    ```
 
-   Шаги: `approve` (решение по воротам `gate`), `verify` (итог критерия приёмки),
+   Шаги: `approve` (решение по воротам `gate`; `expectRefused: <код>` — ядро должно
+   отказать решающему, например `not_eligible`, если он не держит роль гейта, — тест
+   идёт дальше), `verify` (итог критерия приёмки),
    `complete` (выход завершения по `completionSchema`), `expect` (`status`,
    `invokeSkill`, `ensureWork`, `comments`, `noSideEffects`).
 4. **Опиши тип.** Обязательны `displayName` и `lifecycleSchema`:
@@ -69,6 +71,33 @@ description: Описать работу в пакете каталога — т
      (`ensureWork` с `customFields`, `relation`, `requestApproval`; `comment`);
    - `acceptance` — критерии приёмки по умолчанию (`key`, `kind`: `human`,
      `deterministic`, `external_state`, `llm_judge`; `description`, `spec`, `when`);
+   - адресат гейта — `requestApproval.assignee` действия `ensureWork` и `approverRole`
+     критерия `human`/`llm_judge` — пишется ролью пакета `role:<slug>`: решает держатель
+     роли, а id роли конкретной установки в пакете не нужен. Ядро ищет роль при
+     публикации типа и откажет `422 unknown_role` (`details.field` — путь до поля), если
+     её нет; при открытии гейта — в workspace задачи или выше. Шаблон (`$.task…`) ядро
+     разрешит, когда отрисует. `pkg_check` ругается на `role:` не по форме slug
+     (`unknown_role`) и предупреждает о роли, которой нет в пакете и его `requires`:
+
+     ```yaml
+     completionSchema:
+       onComplete:
+         actions:
+           - ensureWork:
+               type: request-review
+               key: follow-up:$.task.id
+               title: Follow-up of $.task.publicId
+               requestApproval: {assignee: "role:approvers"}
+     acceptance:
+       - key: review.approved
+         kind: human
+         description: An approver accepts the review
+         spec: {approverRole: "role:approvers"}
+     ```
+   - `executorRoles: [<slug>]` — роли, одна из которых нужна человеку, чтобы брать работу
+     типа (до 20, без повторов); нет поля или пусто — людей тип не ограничивает. Ядро ищет
+     роль в tenant'е при публикации и откажет `422 unknown_role`; `pkg_check`
+     предупреждает о роли, которой нет в пакете и его `requires`;
    - `instructions` — Markdown инструкции исполнителю (до 16 КиБ), без секретов;
    - `artifactSchema` — какие артефакты задача принимает и выдаёт;
    - `contextSchema` — какой контекст памяти видит исполнитель.
@@ -87,7 +116,9 @@ description: Описать работу в пакете каталога — т
 - [ ] Поля, которые читают исходы и правила, объявлены в `fieldSchema`.
 - [ ] У жизненного цикла есть статус с категорией `terminal_success` и переходы в него.
 - [ ] Скиллы исходов объявлены в пакете или его `requires` (`kind: Skill`).
-- [ ] Роли назначений — объекты `Role` пакета или его `requires`.
+- [ ] Роли назначений и адресаты гейтов (`role:<slug>`) — объекты `Role` пакета или
+      его `requires`; у гейта, адресованного роли, есть сценарий с отказом не держателю
+      (`expectRefused: not_eligible`).
 - [ ] Изменение поведения опубликованного типа — новая версия, а не правка старой.
 
 ## Частые ошибки

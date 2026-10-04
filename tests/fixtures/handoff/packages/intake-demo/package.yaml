@@ -1,0 +1,13 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Пакет-фикстура передачи работы (CP-ADR-0061 амендмент 2026-10-01, CP-ADR-0073 и
+# CP-ADR-0074 амендменты 2026-10-01): гейт типа задачи адресован роли пакета
+# (role:<slug>), шаг human предзаполняет поля задачи данными дела (customFields), хост
+# скиллов получает несекретные настройки (executor.params.env), тест называет автора
+# события (emit.by).
+apiVersion: taimen.ai/v1
+kind: Package
+key: intake-demo
+spec:
+  version: 0.1.0
+  displayName: Intake demo (test fixture)
+  requires: []

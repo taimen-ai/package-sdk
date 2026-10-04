@@ -23,9 +23,9 @@ PACKAGES_APPLY = "/packages:apply"
 
 
 # Виды, которые ядро планирует и ставит по плану пакета (PLANNED_KINDS control-plane,
-# CP-ADR-0074 п.11, амендмент 2026-09-29): у пакета с процессами или календарями их ставит
-# секция core единого плана, а не установщик.
-CORE_PLANNED_KINDS = ("TaskType", "Agent", "Calendar", "Process", "WorkRule")
+# CP-ADR-0074 п.11, амендмент 2026-09-29; View — CP-ADR-0080): у пакета с процессами,
+# календарями или экранами их ставит секция core единого плана, а не установщик.
+CORE_PLANNED_KINDS = ("TaskType", "Agent", "Calendar", "Process", "WorkRule", "View")
 
 
 PLAN_STALE = "plan_stale"
@@ -61,17 +61,17 @@ class ProcessApi:
             envelope = _error_envelope(error.body)
             if error.status == 404:
                 raise CoreUnsupported(
-                    f"ядро не знает {route} — процессы на нём ещё не выкачены"
+                    f"the core does not know {route} — processes are not rolled out on it yet"
                 ) from error
             if error.status == 501:
                 step = (envelope.get("details") or {}).get("implementedBy")
                 raise CoreUnsupported(
-                    f"ядро ещё не реализует {route}" + (f" ({step})" if step else "")
+                    f"the core does not implement {route} yet" + (f" ({step})" if step else "")
                 ) from error
             if envelope.get("code") == PLAN_STALE:
                 raise PackageError(
-                    "план устарел: каталог стенда изменился после построения плана — "
-                    "постройте план заново (package-sdk plan … --out) и примените новый"
+                    "plan is stale: the stand catalog changed after the plan was built — "
+                    "build the plan again (package-sdk plan … --out) and apply the new one"
                 ) from error
             problems = core_errors(error.body)
             if problems:
@@ -93,7 +93,8 @@ class CoreRejected(PackageError):
 
     def __init__(self, problems: list[dict[str, Any]]) -> None:
         super().__init__(
-            "ядро не принимает пакет:\n  " + "\n  ".join(format_core_error(p) for p in problems)
+            "the core rejects the package:\n  "
+            + "\n  ".join(format_core_error(p) for p in problems)
         )
         self.errors = problems
 
@@ -130,11 +131,13 @@ def format_core_error(error: dict[str, Any]) -> str:
     if error.get("path"):
         text += f" [{error['path']}]"
     if error.get("hint"):
-        text += f" (подсказка: {error['hint']})"
+        text += f" (hint: {error['hint']})"
     return text
 
 
 _STATIC_CODE = re.compile(r"[a-z]+(?:_[a-z]+)+")
+# Путь находки в документе (JSON Pointer) в конце сообщения: «… [/spec/layout/0/title]».
+_STATIC_PATH = re.compile(r"\s\[(/[^\]\s]*)\]$")
 
 
 def static_error(message: str) -> dict[str, Any]:
@@ -147,6 +150,9 @@ def static_error(message: str) -> dict[str, Any]:
     found: dict[str, Any] = {"code": "static_check", "severity": "error", "message": rest}
     if _STATIC_CODE.fullmatch(code) and text:
         found.update(code=code, message=text)
+    path = _STATIC_PATH.search(found["message"])
+    if path:
+        found.update(message=found["message"][: path.start()], path=path.group(1))
     if file:
         found["file"] = file
     return found
@@ -174,49 +180,49 @@ def _counters(
         for name in names
         if isinstance(coverage.get(name), dict) and coverage[name].get("total")
     ]
-    log(f"покрытие {title}: {', '.join(parts) or 'нет данных'}")
+    log(f"coverage {title}: {', '.join(parts) or 'no data'}")
     for name in names:
         missing = (coverage.get(name) or {}).get("missing") or []
         if missing:
-            log(f"   не пройдены ({name}): {', '.join(str(m) for m in missing)}")
+            log(f"   not covered ({name}): {', '.join(str(m) for m in missing)}")
 
 
 def print_test_report(response: dict[str, Any], log: Callable[[str], None] = print) -> bool:
     """PackageTestOut: находки, результаты тестов, покрытие; True — status passed."""
     for problem in core_errors(response):
-        log(f"ошибка: {format_core_error(problem)}")
+        log(f"error: {format_core_error(problem)}")
     for problem in core_warnings(response):
-        log(f"предупреждение: {format_core_error(problem)}")
+        log(f"warning: {format_core_error(problem)}")
     results = response.get("tests") or []
     for result in results:
         status = result.get("status", "error")
         mark = {"passed": "ok  ", "failed": "FAIL", "error": "ERR ", "skipped": "SKIP"}.get(
             status, status
         )
-        took = f" ({result['durationMs']} мс)" if result.get("durationMs") is not None else ""
+        took = f" ({result['durationMs']} ms)" if result.get("durationMs") is not None else ""
         log(f"{mark} {result.get('file', '')}: {result.get('name', '')} [{_subject(result)}]{took}")
         for failure in result.get("failures") or []:
-            log(f"     шаг {failure.get('step')}: {failure.get('message', '')}")
+            log(f"     step {failure.get('step')}: {failure.get('message', '')}")
             if failure.get("expected") is not None or failure.get("actual") is not None:
                 log(
-                    f"       ожидалось: {json.dumps(failure.get('expected'), ensure_ascii=False)}; "
-                    f"получено: {json.dumps(failure.get('actual'), ensure_ascii=False)}"
+                    f"       expected: {json.dumps(failure.get('expected'), ensure_ascii=False)}; "
+                    f"actual: {json.dumps(failure.get('actual'), ensure_ascii=False)}"
                 )
     for coverage in response.get("coverage") or []:
         _counters(f"{coverage.get('process')} v{coverage.get('version')}", coverage, _COUNTERS, log)
     for coverage in response.get("ruleCoverage") or []:
-        title = f"правила {coverage.get('rule')} (тестов {coverage.get('tests', 0)})"
+        title = f"rule {coverage.get('rule')} (tests {coverage.get('tests', 0)})"
         _counters(title, coverage, RULE_COUNTERS, log)
     for coverage in response.get("taskTypeCoverage") or []:
         title = (
-            f"типа задачи {coverage.get('taskType')} v{coverage.get('version')} "
-            f"(тестов {coverage.get('tests', 0)})"
+            f"task type {coverage.get('taskType')} v{coverage.get('version')} "
+            f"(tests {coverage.get('tests', 0)})"
         )
         _counters(title, coverage, TASK_TYPE_COUNTERS, log)
     status = response.get("status", "invalid")
     passed = sum(r.get("status") == "passed" for r in results)
     log(
-        f"{'ok' if status == 'passed' else 'не пройдено'} ({status}): тестов {len(results)}, зелёных {passed}"
+        f"{'ok' if status == 'passed' else 'failed'} ({status}): tests {len(results)}, passed {passed}"
     )
     return bool(status == "passed")
 
@@ -234,18 +240,18 @@ def print_plan_deadlines(
         return
     breached = sum(bool(d.get("breached")) for d in deadlines)
     cut = len(deadlines) < total
-    header = f"  сроки: экземпляров {total}"
+    header = f"  deadlines: instances {total}"
     if cut:
-        header += f", показано {len(deadlines)} из {total}"
+        header += f", shown {len(deadlines)} of {total}"
     if breached:
-        header += f", уже просрочено {breached}" + (" среди показанных" if cut else "")
+        header += f", already breached {breached}" + (" among shown" if cut else "")
     log(header)
     for deadline in deadlines:
         element = deadline.get("element")
-        scope = f"шаг {element}" if element else "всё дело"
-        before = deadline.get("previousDueAt") or "не было"
-        after = deadline.get("dueAt") or "снят"
-        mark = " — уже просрочен" if deadline.get("breached") else ""
+        scope = f"step {element}" if element else "whole case"
+        before = deadline.get("previousDueAt") or "none"
+        after = deadline.get("dueAt") or "removed"
+        mark = " — already breached" if deadline.get("breached") else ""
         log(f"    {deadline.get('instanceId')}, {scope}: {before} → {after}{mark}")
 
 
@@ -255,8 +261,8 @@ def print_plan(response: dict[str, Any], log: Callable[[str], None] = print) -> 
     marks = {"create": "+", "update": "~", "retire": "-", "rename": "→", "unchanged": "="}
     package = response.get("package") or {}
     log(
-        f"план {package.get('key', '?')} {package.get('version', '')}: {response.get('planHash', '?')} "
-        f"(каталог {response.get('catalogEtag', '?')})"
+        f"plan {package.get('key', '?')} {package.get('version', '')}: {response.get('planHash', '?')} "
+        f"(catalog {response.get('catalogEtag', '?')})"
     )
     for change in response.get("changes") or []:
         ref = f"{change.get('kind')}/{change.get('key')}"
@@ -270,8 +276,8 @@ def print_plan(response: dict[str, Any], log: Callable[[str], None] = print) -> 
                 + (
                     ""
                     if f.get("owner") != "console"
-                    else " (правлено в консоли, "
-                    + ("будет перезаписано)" if f.get("applies") else "не перезаписывается)")
+                    else " (edited in the console, "
+                    + ("will be overwritten)" if f.get("applies") else "not overwritten)")
                 )
                 for f in fields
             )
@@ -279,40 +285,42 @@ def print_plan(response: dict[str, Any], log: Callable[[str], None] = print) -> 
     for process in response.get("processes") or []:
         before = process.get("fromVersion")
         log(
-            f"процесс {process.get('key')}: "
-            + (f"v{before} → " if before is not None else "новый, ")
+            f"process {process.get('key')}: "
+            + (f"v{before} → " if before is not None else "new, ")
             + f"v{process.get('toVersion')}"
         )
         behaviour = process.get("behaviour")
         if behaviour:
             diverged = behaviour.get("instanceIds") or []
             log(
-                f"  поведение (replay): экземпляров {behaviour.get('replayed', 0)}, расхождений "
+                f"  behaviour (replay): instances {behaviour.get('replayed', 0)}, diverged "
                 f"{behaviour.get('diverged', 0)}"
                 + (f": {', '.join(str(i) for i in diverged)}" if diverged else "")
             )
         for group in process.get("instances") or []:
             blocked = (
-                " — нужна миграция (migration_required)" if group.get("migrationRequired") else ""
+                " — migration required (migration_required)"
+                if group.get("migrationRequired")
+                else ""
             )
             log(
-                f"  открытые экземпляры v{group.get('version')}: {group.get('open', 0)} → {group.get('fate')}{blocked}"
+                f"  open instances v{group.get('version')}: {group.get('open', 0)} → {group.get('fate')}{blocked}"
             )
         print_plan_deadlines(process.get("deadlines") or [], log, process.get("deadlinesTotal"))
     for coverage in response.get("regulationCoverage") or []:
         if not coverage.get("found"):
-            log(f"регламент {coverage.get('document')}: нет в памяти")
+            log(f"regulation {coverage.get('document')}: not in memory")
             continue
         uncovered = coverage.get("uncovered") or []
         log(
-            f"регламент {coverage.get('document')}: разделов с элементами {len(coverage.get('covered') or {})}"
-            + (f", без элементов: {', '.join(uncovered)}" if uncovered else "")
+            f"regulation {coverage.get('document')}: sections with elements {len(coverage.get('covered') or {})}"
+            + (f", without elements: {', '.join(uncovered)}" if uncovered else "")
         )
     errors = core_errors(response)
     for problem in errors:
-        log(f"ошибка: {format_core_error(problem)}")
+        log(f"error: {format_core_error(problem)}")
     for problem in core_warnings(response):
-        log(f"предупреждение: {format_core_error(problem)}")
+        log(f"warning: {format_core_error(problem)}")
     return not errors and not any(
         g.get("migrationRequired")
         for p in response.get("processes") or []

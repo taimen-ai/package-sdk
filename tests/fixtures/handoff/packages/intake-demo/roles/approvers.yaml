@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Role
+key: approvers
+spec:
+  name: Approvers
+  description: Approve the follow-up of a review

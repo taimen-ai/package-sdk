@@ -103,7 +103,7 @@ def test_redirect_to_another_origin_is_refused_and_nothing_reaches_it(
     with pytest.raises(RedirectRefused) as raised:
         Http(old.url).call(method, "/api/v1/roles", body, dict(SECRET))
     message = str(raised.value)
-    assert f"сервер перенаправляет на {new.url} — укажите его в --server" in message
+    assert f"the server redirects to {new.url} — pass it in --server" in message
     assert raised.value.status == code and isinstance(raised.value, HttpError)
     assert new.seen == [], "ни запроса, ни учётки у другого origin"
     assert "secret-token" not in message
@@ -113,7 +113,7 @@ def test_another_port_of_the_same_host_is_another_origin(servers: tuple[Server, 
     old, new = servers
     assert old.url.rpartition(":")[0] == new.url.rpartition(":")[0]  # хост тот же
     old.routes["/x"] = (308, new.url + "/x")
-    with pytest.raises(RedirectRefused, match="перенаправляет на"):
+    with pytest.raises(RedirectRefused, match="redirects to"):
         Http(old.url).call("GET", "/x", None, dict(SECRET))
     assert new.seen == []
 
@@ -135,7 +135,7 @@ def test_redirect_of_a_request_with_a_body_is_refused_within_the_origin_too(
     """Тело POST/PUT при редиректе теряется — повторять запрос без него нельзя."""
     old, _new = servers
     old.routes["/api/v1/roles"] = (302, "/api/v1/roles/")
-    with pytest.raises(RedirectRefused, match="тело запроса при редиректе теряется"):
+    with pytest.raises(RedirectRefused, match="the request body is lost on redirect"):
         Http(old.url).call("POST", "/api/v1/roles", {"key": "r"}, dict(SECRET))
     assert [r["path"] for r in old.seen] == ["/api/v1/roles"]
 

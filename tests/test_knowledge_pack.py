@@ -91,7 +91,7 @@ def test_same_version_with_other_content_is_a_conflict(packages: Path) -> None:
     _pack(packages / "acme-claims", changed)
     errors, _ = manifest.check_manifest(resolve(["acme-claims"], packages_dir=packages))
     assert _codes(errors) == ["knowledge_pack_conflict"]
-    assert "поднимите version" in errors[0]
+    assert "bump version" in errors[0]
 
 
 def _installation_file(packages: Path, knowledge: list[dict[str, Any]]) -> Path:
@@ -179,14 +179,14 @@ def test_registration_and_enablement_on_a_fake_core(packages: Path) -> None:
     lines = _apply(installation, core, env={"CLAIMS_WORKSPACE_ID": WORKSPACE})
     assert set(core.packs) == {("company", "1"), ("claims", "1")}
     assert core.enabled == {WORKSPACE: {"packs": ["company@1", "claims@1"], "strict": False}}
-    assert any("онтологии: company@1, claims@1" in line for line in lines)
+    assert any("ontologies: company@1, claims@1" in line for line in lines)
 
     # повтор с тем же содержимым — без ошибок
     _apply(installation, core, env={"CLAIMS_WORKSPACE_ID": WORKSPACE})
     # та же версия с другим содержимым — ошибка «поднимите версию»
     obj = next(o for o in installation.objects if o.key == "claims")
     obj.spec["kinds"].append({"kind": "extra"})
-    with pytest.raises(PackageError, match="поднимите version"):
+    with pytest.raises(PackageError, match="bump version"):
         _apply(installation, core, env={"CLAIMS_WORKSPACE_ID": WORKSPACE})
 
 
@@ -197,19 +197,25 @@ def test_plan_writes_nothing_and_shows_the_final_set(packages: Path) -> None:
     core = FakeCore()
     lines = _apply(installation, core, dry_run=True)
     assert core.calls == []
-    assert any("онтологии → claims@1 (набор заменит текущий)" in line for line in lines)
+    assert any("ontologies → claims@1 (the set replaces the current one)" in line for line in lines)
 
 
 @pytest.mark.parametrize(
     ("knowledge", "message"),
     [
-        ({"workspace": WORKSPACE}, "список {workspace, packs}"),
-        ([{"packs": ["company@1"]}], "workspace — UUID"),
-        ([{"workspace": WORKSPACE, "packs": "company@1"}], "packs — список"),
-        ([{"workspace": WORKSPACE, "packs": ["company"]}], "company — нужно name@версия"),
-        ([{"workspace": WORKSPACE, "packs": ["company@1.2"]}], "нужно name@версия (целое)"),
-        ([{"workspace": WORKSPACE, "packs": ["company@1"], "strict": "yes"}], "strict — true"),
-        ([{"workspace": WORKSPACE, "packs": [], "mode": "x"}], "лишние поля mode"),
+        ({"workspace": WORKSPACE}, "is a list of {workspace, packs}"),
+        ([{"packs": ["company@1"]}], "workspace is a UUID"),
+        ([{"workspace": WORKSPACE, "packs": "company@1"}], "packs is a list"),
+        (
+            [{"workspace": WORKSPACE, "packs": ["company"]}],
+            "company — name@version (integer) is required",
+        ),
+        (
+            [{"workspace": WORKSPACE, "packs": ["company@1.2"]}],
+            "name@version (integer) is required",
+        ),
+        ([{"workspace": WORKSPACE, "packs": ["company@1"], "strict": "yes"}], "strict is true"),
+        ([{"workspace": WORKSPACE, "packs": [], "mode": "x"}], "unknown fields mode"),
     ],
 )
 def test_malformed_knowledge_is_a_clear_error_not_a_traceback(
@@ -238,9 +244,11 @@ def test_strict_reaches_the_core_and_wins_over_the_workspace_set(packages: Path)
     core = FakeCore()
     lines = _apply(installation, core)
     assert core.enabled == {WORKSPACE: {"packs": ["company@1", "claims@1"], "strict": True}}
-    assert any("строгий режим" in line for line in lines)
+    assert any("strict mode" in line for line in lines)
     plan_lines = _apply(installation, FakeCore(), dry_run=True)
-    assert any("claims@1, строгий режим (набор заменит текущий)" in line for line in plan_lines)
+    assert any(
+        "claims@1, strict mode (the set replaces the current one)" in line for line in plan_lines
+    )
 
 
 def test_pack_version_is_an_integer(packages: Path) -> None:

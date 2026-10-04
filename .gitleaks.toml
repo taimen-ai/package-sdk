@@ -1,4 +1,4 @@
-# gitleaks: правила по умолчанию (открытая поставка, oss-sync O007). Allowlist пуст:
-# тестовых секретов в дереве нет; новая запись — только конкретный проверенный файл.
+# gitleaks: the default rules (open delivery, oss-sync O007). The allowlist is empty:
+# the tree holds no test secrets; a new entry names only a specific reviewed file.
 [extend]
 useDefault = true

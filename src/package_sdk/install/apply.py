@@ -64,8 +64,8 @@ STALE = "plan_stale"
 
 def _stale(message: str) -> PackageError:
     return PackageError(
-        f"{STALE}: план устарел — {message}. Постройте план заново (package-sdk plan … --out) "
-        "и примените новый"
+        f"{STALE}: the plan is stale — {message}. Build the plan again (package-sdk plan … --out) "
+        "and apply the new one"
     )
 
 
@@ -74,8 +74,8 @@ def _first_difference(planned: list[dict[str, Any]], current: list[dict[str, Any
         before = planned[index] if index < len(planned) else None
         after = current[index] if index < len(current) else None
         if before != after:
-            return f"в плане {_short(before)}, на стенде сейчас {_short(after)}"
-    return "порядок изменений другой"
+            return f"in the plan {_short(before)}, on the stand now {_short(after)}"
+    return "the order of changes differs"
 
 
 def _short(change: dict[str, Any] | None) -> str:
@@ -88,7 +88,7 @@ def _short(change: dict[str, Any] | None) -> str:
 def _same(title: str, planned: list[dict[str, Any]], current: list[dict[str, Any]]) -> None:
     before, after = comparable(planned), comparable(current)
     if before != after:
-        raise _stale(f"секция {title}: {_first_difference(before, after)}")
+        raise _stale(f"section {title}: {_first_difference(before, after)}")
 
 
 def _section(document: Mapping[str, Any], kind: str) -> dict[str, Any]:
@@ -144,16 +144,16 @@ def _preflight(
 ) -> None:
     """Всё, что можно сверить до первой записи: входы плана и каждая его секция."""
     if prepared.sources.lock_hash != document.get("lockHash"):
-        raise _stale("пакеты или их источники изменились после построения плана (lockHash)")
+        raise _stale("packages or their sources changed after the plan was built (lockHash)")
     if digest(prepared.variables) != document.get("variablesHash"):
-        raise _stale("значения переменных установки изменились (variablesHash)")
+        raise _stale("installation variable values changed (variablesHash)")
     planned_version = (document.get("engines") or {}).get(CORE_COMPONENT)
     if prepared.version != planned_version:
-        raise _stale(f"ядро стенда обновилось: {planned_version} → {prepared.version}")
+        raise _stale(f"the stand's core was updated: {planned_version} → {prepared.version}")
     installation = prepared.installation
     planned_core = [s["package"] for s in document["sections"] if s["kind"] == "core"]
     if planned_core != [p.key for p in core_packages(installation)]:
-        raise _stale("пакеты с процессами и календарями не те, что в плане")
+        raise _stale("packages with processes and calendars differ from the plan")
     for kind in ("catalog", "knowledge", "notification-rules", "retire"):
         _recheck(kind, document, installation, target, env)
     api = target.process_api()
@@ -163,8 +163,8 @@ def _preflight(
         response = api.plan(_core_request(document, section, installation, env))
         if response.get("planHash") != section["planHash"]:
             raise _stale(
-                f"план ядра пакета {section['package']}: {section['planHash']} → "
-                f"{response.get('planHash')} (каталог или живые экземпляры изменились)"
+                f"core plan of package {section['package']}: {section['planHash']} → "
+                f"{response.get('planHash')} (catalog or live instances changed)"
             )
 
 
@@ -176,7 +176,7 @@ def install_file(
         return install
     ref = Path(str(document.get("install") or ""))
     if not str(ref):
-        raise PackageError("в плане нет файла установки (install) — постройте план заново")
+        raise PackageError("the plan names no installation file (install) — build the plan again")
     if ref.is_absolute() or plan_path is None:
         return ref
     return Path(os.path.normpath(plan_path.resolve().parent / ref))
@@ -224,9 +224,9 @@ def _retire(
                 headers,
             )
         except HttpError as error:
-            raise PackageError(f"{kind}/{key}: вывод из оборота отвергнут — {error}") from error
+            raise PackageError(f"{kind}/{key}: retirement rejected — {error}") from error
         opened = answer.get("openInstances")
-        tail = f", живых экземпляров {opened} — доживут" if opened else ""
+        tail = f", live instances {opened} — will run to completion" if opened else ""
         log(f"   {kind}/{key}: → retired{tail}")
 
 
@@ -253,35 +253,37 @@ def apply(
         verify_document(document)
     server = check_server(target.server)
     if server != document["server"]:
-        raise PackageError(f"план построен для {document['server']}, а применяется к {server}")
+        raise PackageError(
+            f"the plan was built for {document['server']}, but is applied to {server}"
+        )
     install_path = install_file(document, plan_path, install)
     sources = load(install_path, strict=True, cache=cache, log=log)
     installation = sources.installation
     errors, _warnings = check(installation, env=dict(env))
     if errors:
-        raise PackageError("пакеты не прошли проверку:\n  " + "\n  ".join(errors))
+        raise PackageError("packages failed the check:\n  " + "\n  ".join(errors))
     variables = variable_values(installation, env)
     problems = variable_problems(installation, variables, target)
     if problems:
-        raise PackageError("переменные установки не подходят стенду:\n  " + "\n  ".join(problems))
+        raise PackageError(
+            "installation variables do not fit the stand:\n  " + "\n  ".join(problems)
+        )
     _preflight(document, Prepared(sources, core_version(target), variables), target, env)
     if assume_yes:
         log(
-            "   ! применение без подтверждения человека (assume_yes): только инициализация "
-            "стенда, которая сама — решение оператора"
+            "   ! applying without confirmation by a human (assume_yes): only stand "
+            "initialization, which is itself the operator's decision"
         )
     else:
         if confirm is None:
-            raise PackageError("применение плана требует подтверждения человека")
+            raise PackageError("applying a plan requires confirmation by a human")
         for line in format_plan(document):
             log(line)
         overwrite = (
-            " с перезаписью правок консоли (overwriteConsole)"
-            if overwrites_console(document)
-            else ""
+            " overwriting console edits (overwriteConsole)" if overwrites_console(document) else ""
         )
-        if not confirm(f"Применить план {document['planHash']}{overwrite}?"):
-            raise PackageError("применение отменено: план не подтверждён")
+        if not confirm(f"Apply plan {document['planHash']}{overwrite}?"):
+            raise PackageError("apply cancelled: the plan was not confirmed")
     applied: dict[str, Any] = {"planHash": document["planHash"], "core": []}
     for section in document["sections"]:
         kind = section["kind"]
@@ -301,7 +303,7 @@ def apply(
             for item in response.get("applied") or []:
                 version = f" v{item['version']}" if item.get("version") is not None else ""
                 log(f"   {item.get('kind')}/{item.get('key')}: {item.get('action')}{version}")
-            log(f"   применён план ядра {section['package']}: {section['planHash']}")
+            log(f"   applied core plan {section['package']}: {section['planHash']}")
             applied["core"].append(response)
         elif kind == "knowledge":
             _recheck(kind, document, installation, target, env)
@@ -313,5 +315,5 @@ def apply(
         elif kind == "retire":
             _recheck(kind, document, installation, target, env)
             _retire(section, installation, target, env, log)
-    log(f"применён план {document['planHash']} ({PLAN_FORMAT})")
+    log(f"applied plan {document['planHash']} ({PLAN_FORMAT})")
     return applied

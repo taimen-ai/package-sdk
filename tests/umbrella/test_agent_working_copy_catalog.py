@@ -369,7 +369,7 @@ def test_an_alias_equal_to_its_own_key_is_rejected(alias):
     document = example()
     catalog(document)["repositories"]["fleet"]["aliases"] = [alias]
     assert any(
-        "fleet.aliases" in e and "совпадает с ключом записи без учёта регистра" in e
+        "fleet.aliases" in e and "matches the entry's key case-insensitively" in e
         for e in cp._working_copy_catalog_errors(document["spec"])
     )
 
@@ -379,8 +379,8 @@ def test_two_aliases_of_one_entry_differing_in_case_name_the_other_alias():
     catalog(document)["repositories"]["superproject"]["aliases"] = ["Суперпроект", "суперпроект"]
     assert errors(document) == []  # uniqueItems различает регистр — ловит check
     found = cp._working_copy_catalog_errors(document["spec"])
-    assert any("повторяет псевдоним 'Суперпроект' этой же записи" in e for e in found), found
-    assert not any("совпадает с ключом" in e for e in found)
+    assert any("repeats alias 'Суперпроект' of the same entry" in e for e in found), found
+    assert not any("matches the entry's key" in e or "matches the key of entry" in e for e in found)
 
 
 def test_aliases_differing_only_in_case_are_ambiguous():
@@ -451,7 +451,7 @@ def test_a_directory_equal_to_another_key_is_rejected():
     document = example()
     catalog(document)["repositories"]["fleet"]["directory"] = "control-plane"
     assert any(
-        "fleet.directory" in e and "ключом записи 'control-plane'" in e
+        "fleet.directory" in e and "the key of entry 'control-plane'" in e
         for e in cp._working_copy_catalog_errors(document["spec"])
     )
 
@@ -487,3 +487,131 @@ def test_check_reports_catalog_links(tmp_path, monkeypatch):
     )
     errors_, _warnings = cp.check(cp.resolve(["demo"]))
     assert any("workingCopy.superproject" in e and "'umbrella'" in e for e in errors_)
+
+
+# --- каталоги с сегментами (TAI-ADR-0064, фаза 0) ---------------------------------
+
+SEGMENTED = {
+    "control-plane": "services/control-plane",
+    "platform-auth-sdk": "sdk/platform-auth-sdk",
+    "skill-sdk": "sdk/skill-sdk",
+    "package-sdk": "sdk/package-sdk",
+}
+
+
+def test_the_catalog_in_the_new_layout_is_valid():
+    """Раскладка services/ и sdk/: directory с сегментами, ключи прежние."""
+    document = example()
+    for key, directory in SEGMENTED.items():
+        catalog(document)["repositories"][key]["directory"] = directory
+    assert errors(document) == []
+    assert cp._working_copy_catalog_errors(document["spec"]) == []
+
+
+@pytest.mark.parametrize("directory", ["control-plane", "a", "x.y_z-1", "a/b/c/d", "0/1"])
+def test_a_flat_or_segmented_directory_is_accepted(directory):
+    document = example()
+    catalog(document)["repositories"]["fleet"]["directory"] = directory
+    assert errors(document) == []
+
+
+@pytest.mark.parametrize(
+    "directory",
+    [
+        "",
+        "/services/control-plane",  # абсолютный
+        "../control-plane",
+        "services/../control-plane",
+        "services/..",
+        "./control-plane",
+        "services/./control-plane",
+        "services//control-plane",  # пустой сегмент
+        "services/control-plane/",
+        "/",
+        "services\\control-plane",  # обратный слэш
+        "Services/control-plane",
+        "services/.hidden",
+        "services/control-plane\n",
+        "services/con trol",
+        "a" * 101,
+        "services/" + "a" * 101,
+        "/".join(["a" * 50] * 4),  # длиннее 200
+    ],
+)
+def test_a_directory_outside_the_relative_path_form_is_rejected(directory):
+    document = example()
+    catalog(document)["repositories"]["fleet"]["directory"] = directory
+    assert errors(document), directory
+
+
+@pytest.mark.parametrize("directory", [None, 1, ["services", "fleet"], {"path": "x"}])
+def test_a_directory_of_a_wrong_type_is_rejected(directory):
+    document = example()
+    catalog(document)["repositories"]["fleet"]["directory"] = directory
+    assert errors(document)
+
+
+def test_two_entries_with_one_segmented_directory_are_rejected():
+    document = example()
+    catalog(document)["repositories"]["control-plane"]["directory"] = "services/shared"
+    catalog(document)["repositories"]["fleet"]["directory"] = "services/shared"
+    assert any(
+        "fleet.directory" in e and "'control-plane'" in e
+        for e in cp._working_copy_catalog_errors(document["spec"])
+    )
+
+
+def test_a_directory_inside_another_entrys_key_is_rejected():
+    """Запись без directory лежит в каталоге своего ключа: соседа внутрь неё не положить."""
+    document = example()
+    catalog(document)["repositories"]["fleet"]["directory"] = "control-plane/fleet"
+    found = cp._working_copy_catalog_errors(document["spec"])
+    assert any(
+        "repositories.fleet:" in e and "inside the directory 'control-plane'" in e for e in found
+    ), found
+
+
+def test_a_directory_holding_another_entry_is_rejected():
+    document = example()
+    catalog(document)["repositories"]["superproject"]["directory"] = "services"
+    catalog(document)["repositories"]["control-plane"]["directory"] = "services/control-plane"
+    found = cp._working_copy_catalog_errors(document["spec"])
+    assert any(
+        "repositories.control-plane:" in e and "of entry 'superproject'" in e for e in found
+    ), found
+
+
+def test_siblings_sharing_a_prefix_of_the_name_are_not_nested():
+    document = example()
+    catalog(document)["repositories"]["control-plane"]["directory"] = "services/control-plane"
+    catalog(document)["repositories"]["fleet"]["directory"] = "services/control-plane-fleet"
+    assert cp._working_copy_catalog_errors(document["spec"]) == []
+
+
+def test_the_single_form_accepts_segmented_directory_and_neighbours():
+    document = example()
+    document["spec"]["workingCopy"] = {
+        "repository": "https://git.example/org/package-sdk.git",
+        "directory": "sdk/package-sdk",
+        "neighbours": {
+            "services/control-plane": "https://git.example/org/control-plane.git",
+            "sdk/platform-auth-sdk": "https://git.example/org/platform-auth-sdk.git",
+            "skill-sdk": "https://git.example/org/skill-sdk.git",
+        },
+    }
+    assert errors(document) == []
+
+
+@pytest.mark.parametrize(
+    "path", ["../control-plane", "/abs", "sdk//x", "sdk\\x", "sdk/", "./x", "x\n", ""]
+)
+def test_the_single_form_rejects_a_bad_path(path):
+    for where in ("directory", "neighbours"):
+        document = example()
+        working_copy = {"repository": "https://git.example/org/package-sdk.git"}
+        if where == "directory":
+            working_copy["directory"] = path
+        else:
+            working_copy["neighbours"] = {path: "https://git.example/org/x.git"}
+        document["spec"]["workingCopy"] = working_copy
+        assert errors(document), (where, path)

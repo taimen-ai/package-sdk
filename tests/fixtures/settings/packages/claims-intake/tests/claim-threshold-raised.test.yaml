@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/test.schema.json
+process: claim
+name: a raised refund threshold applies to the next claim
+given:
+  settings: {escalationRole: claims, refundThreshold: 50000}
+steps:
+  - settings: {escalationRole: claims, refundThreshold: 100000}
+  - emit: {observation: helpdesk.ticket_created, payload: {ticketId: T-2, amount: 72000}}
+  - expect: {status: completed, outcome: closed}

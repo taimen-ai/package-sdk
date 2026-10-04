@@ -11,17 +11,17 @@ from pathlib import Path
 
 import pytest
 
-from package_sdk import manifest
+from package_sdk import layout, manifest
 
 SNAPSHOT = Path(manifest.__file__).parent / "platform_ontologies"
-MEMORY = Path(__file__).resolve().parents[3] / "memory-service" / "src" / "platform_memory"
+MEMORY = layout.neighbour("memory-service") / "src" / "platform_memory"
 
 
 @pytest.mark.parametrize("name", ["default"])
 def test_snapshot_matches_memory_service(name: str) -> None:
     source = MEMORY / "core" / "packs" / f"{name}.json"
     if not source.is_file():
-        pytest.skip("memory-service не рядом (не суперпроект)")
+        pytest.skip(f"no memory-service next to the SDK ({source}): not a superproject checkout")
     ours = json.loads((SNAPSHOT / f"{name}.json").read_text(encoding="utf-8"))
     assert ours == json.loads(source.read_text(encoding="utf-8"))
 

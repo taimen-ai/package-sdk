@@ -113,7 +113,7 @@ def test_process_without_owner_is_a_warning_and_owner_agent_a_reference(procdemo
     process = procdemo / "processes" / "purchase-example.yaml"
     _edit(process, "  owner: [{role: purchase-lead}]\n", "")
     errors, warnings = cp.check(cp.resolve(["procdemo"]))
-    assert errors == [] and any("owner не задан" in w for w in warnings)
+    assert errors == [] and any("owner is not set" in w for w in warnings)
     process.write_text(
         process.read_text(encoding="utf-8").replace(
             "  identity: {agent: example-process}\n",
@@ -140,7 +140,7 @@ def test_data_ref_is_expanded_from_a_package_file(procdemo):
     assert obj.spec["data"] == data
     assert cp.check(cp.resolve(["procdemo"]))[0] == []
     _edit(process, "../schemas/purchase.schema.json", "../../selfdev/package.yaml")
-    with pytest.raises(cp.PackageError, match="за пределы пакета"):
+    with pytest.raises(cp.PackageError, match="points outside the package"):
         cp.resolve(["procdemo"])
 
 
@@ -154,8 +154,12 @@ def test_data_ref_is_expanded_from_a_package_file(procdemo):
             "decide: {table: approval-levels}",
             "decide.table 'approval-levels'",
         ),
-        ("- id: decline", "- id: level", "id 'level' уже занят"),
-        ("identity: {agent: example-process}", "identity: {agent: nobody}", "агента 'nobody'"),
+        ("- id: decline", "- id: level", "id 'level' is already taken"),
+        (
+            "identity: {agent: example-process}",
+            "identity: {agent: nobody}",
+            "references agent 'nobody'",
+        ),
     ],
 )
 def test_check_catches_what_is_visible_without_the_core(procdemo, old, new, expected):
@@ -184,7 +188,7 @@ def test_renames_must_name_an_object_of_the_package(procdemo):
     errors, _ = cp.check(cp.resolve(["procdemo"]))
     renames = [e for e in errors if "renames" in e]
     assert len(renames) == 1 and renames[0].endswith(
-        "renames: Process/missing — такого объекта в пакете нет"
+        "renames: Process/missing — no such object in the package"
     )
 
 
@@ -469,13 +473,10 @@ def test_check_asks_the_core_and_prints_its_problems_in_place(procdemo, core, ca
     assert cp.main(["check", "--package", "procdemo", "--server", SERVER]) == 1
     out = capsys.readouterr().out
     assert (
-        "ошибка: processes/purchase-example.yaml:83: unknown_data_field: нет поля data.decison "
-        "[/spec/stages/0/exit] (подсказка: может быть, data.decision?)"
+        "error: processes/purchase-example.yaml:83: unknown_data_field: нет поля data.decison "
+        "[/spec/stages/0/exit] (hint: может быть, data.decision?)"
     ) in out
-    assert (
-        "предупреждение: processes/purchase-example.yaml: unused_field: поле history не читается"
-        in out
-    )
+    assert "warning: processes/purchase-example.yaml: unused_field: поле history не читается" in out
     path, body = core.calls[0]
     assert (
         path == "/api/v1/packages:test?checkOnly=true" and len(core.calls) == 1
@@ -498,8 +499,8 @@ def test_check_asks_the_core_and_prints_its_problems_in_place(procdemo, core, ca
 @pytest.mark.parametrize(
     ("status", "said"),
     [
-        (404, "не знает /packages:test"),
-        (501, "ещё не реализует /packages:test (process-packages P013)"),
+        (404, "does not know /packages:test"),
+        (501, "does not implement /packages:test yet (process-packages P013)"),
     ],
 )
 def test_check_against_a_core_without_processes_falls_back_to_the_schema(
@@ -509,7 +510,9 @@ def test_check_against_a_core_without_processes_falls_back_to_the_schema(
     assert cp.main(["check", "--package", "procdemo", "--server", SERVER]) == 0
     out = capsys.readouterr().out
     assert (
-        "ядро не поддерживает проверку процессов" in out and said in out and "только схема" in out
+        "the core does not support checking processes" in out
+        and said in out
+        and "only the schema was checked" in out
     )
 
 
@@ -521,7 +524,7 @@ def test_check_with_unreachable_core_is_not_a_failure(procdemo, monkeypatch, cap
     monkeypatch.setattr(cp, "Http", lambda _base: Down())
     monkeypatch.setattr(cp, "_bearer", lambda _server: "t")
     assert cp.main(["check", "--package", "procdemo", "--server", SERVER]) == 0
-    assert "ядро недоступно" in capsys.readouterr().out
+    assert "the core is unreachable" in capsys.readouterr().out
 
 
 # --- test --------------------------------------------------------------------------
@@ -544,13 +547,13 @@ def test_test_command_runs_the_package_tests_and_prints_coverage(procdemo, core,
     )
     out = capsys.readouterr().out
     assert (
-        "FAIL tests/purchase.test.yaml: отказ от участия после прошлого проигрыша [purchase-example] (12 мс)"
+        "FAIL tests/purchase.test.yaml: отказ от участия после прошлого проигрыша [purchase-example] (12 ms)"
         in out
     )
-    assert "шаг 3: эскалации не было" in out
-    assert "покрытие purchase-example v1: elements 7/20, decisionRows 0/2" in out
-    assert "не пройдены (decisionRows): approval-level#1" in out
-    assert "не пройдено (failed): тестов 1, зелёных 0" in out
+    assert "step 3: эскалации не было" in out
+    assert "coverage purchase-example v1: elements 7/20, decisionRows 0/2" in out
+    assert "not covered (decisionRows): approval-level#1" in out
+    assert "failed (failed): tests 1, passed 0" in out
     path, body = core.calls[0]
     assert (
         path == "/api/v1/packages:test" and len(core.calls) == 1
@@ -565,12 +568,12 @@ def test_test_command_without_tests_or_with_a_static_error_does_not_call_the_cor
     assert (
         cp.main(["test", "--package", "procdemo", "--test", "нет такого", "--server", SERVER]) == 1
     )
-    assert "нет тестов" in capsys.readouterr().out
+    assert "no tests" in capsys.readouterr().out
     _edit(
         procdemo / "processes" / "purchase-example.yaml", "taskType: go-no-go", "taskType: unknown"
     )
     assert cp.main(["test", "--package", "procdemo", "--server", SERVER]) == 1
-    assert "тесты не запускались" in capsys.readouterr().out
+    assert "tests were not run" in capsys.readouterr().out
     assert core.calls == []
 
 
@@ -656,10 +659,10 @@ def test_plan_prints_the_diff_and_saves_the_plan_with_its_hash(
     assert cp.main(_plan_args(install, tmp_path, "--replay-limit", "20")) == 0
     out = capsys.readouterr().out
     assert "+ Calendar/ru" in out and "→ Process/purchase → Process/purchase-example" in out
-    assert "~ TaskType/go-no-go: /description (правлено в консоли, не перезаписывается)" in out
-    assert "процесс purchase-example: v1 → v2" in out
-    assert "поведение (replay): экземпляров 5, расхождений 1" in out
-    assert "открытые экземпляры v1: 3 → migrate" in out
+    assert "~ TaskType/go-no-go: /description (edited in the console, not overwritten)" in out
+    assert "process purchase-example: v1 → v2" in out
+    assert "behaviour (replay): instances 5, diverged 1" in out
+    assert "open instances v1: 3 → migrate" in out
     # план ядра — только у пакета с процессами; renames — в package.yaml среди файлов
     assert [path for path, _b in core.calls] == ["/api/v1/packages:plan"]
     request = core.calls[0][1]
@@ -782,14 +785,14 @@ def test_plan_snapshots_follow_the_core_contract(snapshot):
 
 def test_plan_prints_the_deadlines_the_migration_recomputes():
     lines = _printed_plan(_PLAN_WITH_DEADLINES)
-    start = lines.index("  сроки: экземпляров 3, уже просрочено 1")
-    assert lines[start - 1] == "  открытые экземпляры v1: 3 → migrate"
+    start = lines.index("  deadlines: instances 3, already breached 1")
+    assert lines[start - 1] == "  open instances v1: 3 → migrate"
     assert lines[start + 1 : start + 4] == [
-        "    0b7c9c5e-0000-4000-8000-000000000001, шаг price: "
+        "    0b7c9c5e-0000-4000-8000-000000000001, step price: "
         "2026-10-01T10:00:00Z → 2026-10-03T10:00:00Z",
-        "    0b7c9c5e-0000-4000-8000-000000000002, всё дело: "
-        "не было → 2026-09-29T10:00:00Z — уже просрочен",
-        "    0b7c9c5e-0000-4000-8000-000000000003, шаг approval: 2026-10-05T10:00:00Z → снят",
+        "    0b7c9c5e-0000-4000-8000-000000000002, whole case: "
+        "none → 2026-09-29T10:00:00Z — already breached",
+        "    0b7c9c5e-0000-4000-8000-000000000003, step approval: 2026-10-05T10:00:00Z → removed",
     ]
 
 
@@ -797,12 +800,12 @@ def test_plan_with_a_cut_deadline_list_prints_the_total_from_the_core():
     response = _cut_plan()
     lines = _printed_plan(response)
     start = lines.index(
-        "  сроки: экземпляров 250, показано 3 из 250, уже просрочено 1 среди показанных"
+        "  deadlines: instances 250, shown 3 of 250, already breached 1 among shown"
     )
     assert [line[:17] for line in lines[start + 1 : start + 4]] == ["    0b7c9c5e-0000"] * 3
 
     response["processes"][0]["deadlinesTotal"] = 3  # не усечён — заголовок как без поля
-    assert "  сроки: экземпляров 3, уже просрочено 1" in _printed_plan(response)
+    assert "  deadlines: instances 3, already breached 1" in _printed_plan(response)
 
 
 @pytest.mark.parametrize("deadlines", [[], None, "absent"])
@@ -814,8 +817,8 @@ def test_plan_without_deadlines_prints_no_deadline_section(deadlines):
     else:
         process["deadlines"] = deadlines
     lines = _printed_plan(response)
-    assert not any("срок" in line for line in lines)
-    assert lines[-1] == "  открытые экземпляры v1: 3 → migrate"
+    assert not any("deadline" in line for line in lines)
+    assert lines[-1] == "  open instances v1: 3 → migrate"
 
 
 def _core_with_deadlines(core, monkeypatch) -> list[dict[str, Any]]:
@@ -851,9 +854,9 @@ def test_plan_prints_deadlines_under_the_process(
     _core_with_deadlines(core, monkeypatch)
     assert cp.main(_plan_args(install, tmp_path)) == 0
     out = capsys.readouterr().out.splitlines()
-    start = out.index("    сроки: экземпляров 3, уже просрочено 1")
-    assert out[start - 1] == "    открытые экземпляры v1: 3 → migrate"
-    assert out[start + 2].endswith("всё дело: не было → 2026-09-29T10:00:00Z — уже просрочен")
+    start = out.index("    deadlines: instances 3, already breached 1")
+    assert out[start - 1] == "    open instances v1: 3 → migrate"
+    assert out[start + 2].endswith("whole case: none → 2026-09-29T10:00:00Z — already breached")
 
 
 def test_install_retire_of_a_process_is_part_of_the_plan(
@@ -865,7 +868,7 @@ def test_install_retire_of_a_process_is_part_of_the_plan(
         install.read_text() + "  retire:\n    Process: [old-process]\n", encoding="utf-8"
     )
     assert cp.main(_plan_args(install, tmp_path)) == 0
-    assert "- Process/old-process: новые экземпляры не стартуют, живые доживают: 1" in (
+    assert "- Process/old-process: new instances do not start, live ones run to completion: 1" in (
         capsys.readouterr().out
     )
     saved = json.loads((tmp_path / "plan.json").read_text())
@@ -928,7 +931,7 @@ def test_apply_of_a_stale_plan_is_refused_clearly(
     core.etag = "sha256:" + "f" * 64  # каталог стенда изменился после построения плана
     monkeypatch.setattr(cp, "_ask", lambda _question: True)
     assert cp.main(_apply_args(plan_file, tmp_path)) == 1
-    assert "план устарел" in capsys.readouterr().err
+    assert "the plan is stale" in capsys.readouterr().err
     assert stand.writes == [] and stand.notify.writes == []
     assert [p for p, _b in core.calls].count("/api/v1/packages:apply") == 0
 
@@ -939,17 +942,20 @@ def test_apply_refuses_an_edited_plan_file_and_another_server(
     plan_file = _plan(install, tmp_path, monkeypatch)
     document = json.loads(plan_file.read_text())
     assert cp.main(_apply_args(plan_file, tmp_path, "--server", "https://other.example.com")) == 1
-    assert "построен для" in capsys.readouterr().err
+    assert "the plan was built for" in capsys.readouterr().err
     document["sections"][1]["plan"]["changes"] = []
     plan_file.write_text(json.dumps(document))
     assert cp.main(_apply_args(plan_file, tmp_path)) == 1
-    assert "planHash не сходится" in capsys.readouterr().err
+    assert "planHash does not match" in capsys.readouterr().err
     assert [p for p, _b in core.calls].count("/api/v1/packages:apply") == 0
 
 
 @pytest.mark.parametrize(
     ("status", "said"),
-    [(404, "ядро не знает /packages:plan"), (501, "ядро ещё не реализует /packages:plan")],
+    [
+        (404, "the core does not know /packages:plan"),
+        (501, "the core does not implement /packages:plan yet"),
+    ],
 )
 def test_plan_against_a_core_without_processes_says_so(
     install, core, stand, tmp_path, monkeypatch, capsys, status, said
@@ -1018,9 +1024,10 @@ def test_migrate_expr_asks_the_core_where_and_how_and_writes_only_with_write(san
         "+  condition: cel(condition)" in report
         and "-      - {eq: [{var: payload.data.branch}, main]}" in report
     )
-    assert "читает переменные сверх профиля: trigger" in report
+    assert "reads variables beyond the profile: trigger" in report
     assert (
-        "/spec/approvalSchema/gates/de~1fault (path) не переводится: outside the grammar" in report
+        "/spec/approvalSchema/gates/de~1fault (path) cannot be translated: outside the grammar"
+        in report
     )
     assert rule.read_text(encoding="utf-8") == before
 
@@ -1076,6 +1083,6 @@ def test_migrate_expr_with_the_real_core_translates_selfdev_without_writing(sand
     lines: list[str] = []
     total = cp.migrate_expressions(cp.resolve(["selfdev"]).packages[-1], log=lines.append)
     report = "\n".join(lines)
-    assert total > 0 and "не переводится" not in report
+    assert total > 0 and "cannot be translated" not in report
     assert 'event.payload.?data.?branch.orValue(null) == "main"' in report
     assert rule.read_text(encoding="utf-8") == before

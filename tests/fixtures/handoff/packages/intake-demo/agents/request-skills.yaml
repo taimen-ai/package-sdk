@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# Хост скиллов пакета: адрес портала и лимит страницы — несекретные настройки скиллов
+# (executor.params.env); токен портала — секрет узла (placement.secrets).
+apiVersion: taimen.ai/v1
+kind: Agent
+key: request-skills
+spec:
+  displayName: Request skills
+  identity:
+    kind: agent
+    permissions: [sessions.open, tasks.read, skills.execute]
+  executor:
+    kind: skills
+    params:
+      env:
+        PORTAL_URL: https://portal.example.com
+        PORTAL_PAGE_LIMIT: "50"
+  skills:
+    protocols: [local]
+    local: [intake_demo.skills]
+  placement:
+    requires: [portal-access]
+    secrets: [portal-token]
+  state: stopped

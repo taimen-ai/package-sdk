@@ -1,5 +1,5 @@
 {
-  "description": "Применение плана установки — только по плану, который видел человек: перед pkg_apply хост спрашивает подтверждение, вызов без planHash или с чужим хэшем отклоняется.",
+  "description": "An installation plan is applied only as the human has seen it: before pkg_apply the host asks for confirmation; a call without planHash or with another plan's hash is denied.",
   "hooks": {
     "PreToolUse": [
       {

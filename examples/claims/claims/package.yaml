@@ -14,7 +14,7 @@ apiVersion: taimen.ai/v1
 kind: Package
 key: claims
 spec:
-  version: 0.1.0
+  version: 0.1.1
   displayName: Customer claims
   description: >-
     Customer claims from a helpdesk: classification, routing, review, refund approval
@@ -23,7 +23,7 @@ spec:
   license: Apache-2.0
   authors: ["The package-sdk authors"]
   engines:
-    control-plane: ">=0.9,<0.10"
+    control-plane: ">=0.10,<0.11"
   knowledge: ["default@1", "claims@1"]
   variables:
     CLAIMS_WORKSPACE_ID:

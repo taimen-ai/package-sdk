@@ -72,14 +72,25 @@ description: Собрать интеграцию с внешней систем�
    (`package_sdk.connector.testing.run_once(observe, config=…, secrets=…)`), скиллы —
    вызовом функции. Зависимости `integration/pyproject.toml` поставь в окружение сам:
    пирамида их не ставит.
-6. **Агенты** — скилл `author-agent`: наблюдатель — `executor.kind: observer`,
+6. **Тип подключения** — если в систему входят учёткой организации (согласие OAuth 2
+   или долгосрочный ключ), а не секретом узла, опиши `kind: ConnectionType` в
+   `connection-types/<ключ>.yaml`: `auth` (`oauth2`, `token`), блок `oauth2`
+   (`authorizeUrl`, `tokenUrlTemplate` — единственный плейсхолдер `{account}`, хост —
+   внешнее DNS-имя; `accountParam`, `authStyle`, `scopes`), `accountField` (подпись и
+   `pattern` учётки), `settingsSchema` несекретных настроек и `defaultKey`. Значений
+   секретов в типе нет — их вводит администратор в консоли. Версию задаёт пакет:
+   правка опубликованной версии — новая `spec.version`. Агенты называют подключение в
+   `connections` (скилл `author-agent`). Заготовка —
+   `package-sdk add ConnectionType <ключ> --package <пакет>`.
+7. **Агенты** — скилл `author-agent`: наблюдатель — `executor.kind: observer`,
    `params.entrypoint`, `config`, `intervalSeconds`; хост скиллов —
-   `executor.kind: skills`; `placement` с меткой сети системы и именами секретов.
-7. **Образы** — `package-sdk image observer --package <пакет> --entrypoint <модуль:функция>`
+   `executor.kind: skills`, несекретные настройки скиллов (адрес системы, лимиты) —
+   `executor.params.env`; `placement` с меткой сети системы и именами секретов.
+8. **Образы** — `package-sdk image observer --package <пакет> --entrypoint <модуль:функция>`
    и `package-sdk image skills --package <пакет> --modules <модули>`: Dockerfile от
    базового образа поставки. Тег образа — в `executor.image` описания агента; узел
    запустит его, только если образ в его списке разрешённых.
-8. **Пирамида:** `pkg_test` с `path` пакета — проверка, контракты скиллов, pytest кода
+9. **Пирамида:** `pkg_test` с `path` пакета — проверка, контракты скиллов, pytest кода
    интеграции, сценарии. Всё должно быть `passed`.
 
 ## Чек-лист
@@ -90,6 +101,8 @@ description: Собрать интеграцию с внешней систем�
 - [ ] Наблюдатель и скиллы покрыты тестами кода (`integration` — `passed`).
 - [ ] Адреса системы — переменные установки, объявленные в манифесте.
 - [ ] Запись во внешнюю систему — с согласованием человека.
+- [ ] Учётка организации — тип подключения (`ConnectionType`) без значений секретов, агент
+      называет его `defaultKey` в `connections`.
 
 ## Частые ошибки
 

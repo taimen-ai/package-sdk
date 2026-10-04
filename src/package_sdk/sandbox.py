@@ -32,7 +32,17 @@
   «документа нет в базе знаний» здесь не появится;
 - переменные установки `${…}` подставляются из `--env` (файл .env) и окружения, как у
   `package-sdk test`; незаданные остаются, а `workspaceId` вида `${…}` снимается, как это
-  делает ядро без `workspaceId` запроса.
+  делает ядро без `workspaceId` запроса;
+- настройки пакета (CP-ADR-0081 §6, Б5): `given.settings` и шаг `settings` теста процесса
+  ядро проверяет по схеме из файлов пакета и пишет во временную историю, как
+  `POST /packages:test`. Организации у песочницы нет: ссылка `x-ref` на тип задачи или
+  календарь должна быть в пакете и его `requires`, а id роли, principal'а и workspace
+  считаются существующими — как вымышленные principal теста. Процесс из `requires`, который
+  читает настройки своего пакета, видит их значения по умолчанию. Ядро старше настроек —
+  находка-ошибка `sandbox_settings_unsupported`, если пакет их читает или тест их задаёт.
+- виды каталога, которых процессы, правила и типы задач не касаются (`ConnectionType`,
+  CP-ADR-0079), в песочницу не передаются, если разбор пакетов ядра рядом их ещё не
+  знает: пакет провайдера с типом подключения тестируется так же, как без него.
 
 Нужен код ядра — extra `package-sdk[sandbox]` (control-plane закреплённой версии):
 
@@ -54,6 +64,7 @@ import sys
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +80,13 @@ DATABASE_REQUIRED = "sandbox_database_required"
 SKIPPED = "skipped"
 # Tenant песочницы в её базе: заводится при первом прогоне, дальше переиспользуется.
 SANDBOX_TENANT = "package-sandbox"
+# Находка: пакет читает настройки или тест их задаёт, а ядро рядом настроек не знает.
+SETTINGS_UNSUPPORTED = "sandbox_settings_unsupported"
+# Виды x-ref, значения которых — ключи объектов каталога, а не id организации.
+_CATALOG_REFS = {"taskType": "TaskType", "calendar": "Calendar"}
+# Виды каталога, которых тесты пакета не касаются: песочнице они не нужны, а разбор пакетов
+# ядра, который их ещё не знает, ответил бы unknown_kind (CP-ADR-0079 §2: ConnectionType).
+PROCESS_NEUTRAL_KINDS = ("ConnectionType",)
 
 
 class CoreMissing(RuntimeError):
@@ -84,6 +102,7 @@ def _domain() -> dict[str, Any]:
         from control_plane.domain import process_sandbox as sandbox
         from control_plane.domain.calendar import Calendar, CalendarError
         from control_plane.domain.package_source import (
+            KINDS,
             SUBJECT_PROCESS,
             ParsedPackage,
             parse_package,
@@ -91,10 +110,18 @@ def _domain() -> dict[str, Any]:
         )
     except ImportError as exc:  # pragma: no cover - зависит от окружения
         raise CoreMissing(
-            "нужен код ядра с движком процессов и тестами правил: установите "
+            "the core's code with the process engine and work rule tests is required: install "
             "package-sdk[sandbox] — " + str(exc)
         ) from exc
+    try:  # CP-ADR-0081: ядро старше настроек пакетов этих модулей не знает
+        from control_plane.domain import package_settings, settings_refs
+    except ImportError:
+        package_settings = settings_refs = None
+    if "settings_schema" not in getattr(sandbox.World, "__dataclass_fields__", {}):
+        package_settings = settings_refs = None
     return {
+        "package_settings": package_settings,
+        "settings_refs": settings_refs,
         "pd": pd,
         "engine": engine,
         "sandbox": sandbox,
@@ -107,11 +134,27 @@ def _domain() -> dict[str, Any]:
         "ParsedPackage": ParsedPackage,
         "parse_package": parse_package,
         "select_tests": select_tests,
+        "kinds": frozenset(KINDS),
     }
 
 
-def _files(package: cp.Package, env: dict[str, str]) -> list[tuple[str, str]]:
-    return [(f["path"], f["content"]) for f in cp_source.package_files(package, env, strict=False)]
+def _files(
+    package: cp.Package, env: dict[str, str], known_kinds: frozenset[str] | None = None
+) -> list[tuple[str, str]]:
+    """Файлы пакета для разбора ядром; объекты видов, нейтральных к тестам и неизвестных
+    ядру рядом (known_kinds), пропускаются."""
+    skipped = {
+        obj.path.relative_to(package.path).as_posix()
+        for obj in package.objects
+        if obj.kind in PROCESS_NEUTRAL_KINDS
+        and known_kinds is not None
+        and obj.kind not in known_kinds
+    }
+    return [
+        (f["path"], f["content"])
+        for f in cp_source.package_files(package, env, strict=False)
+        if f["path"] not in skipped
+    ]
 
 
 def _skill_entry(pd: Any, spec: dict[str, Any]) -> Any:
@@ -151,6 +194,89 @@ def with_requires(d: dict[str, Any], own: Any, required: dict[str, Any]) -> Any:
     )
 
 
+@dataclass
+class _Settings:
+    """Настройки пакетов для песочницы: находки объявления, ``SettingsScope`` каталога по
+    ключу пакета и поля ``World`` ядра."""
+
+    problems: list[Any] = field(default_factory=list)
+    scopes: dict[str, Any] = field(default_factory=dict)
+    world: dict[str, Any] = field(default_factory=dict)
+
+
+def _test_settings(test: Any) -> list[Any]:
+    """Значения настроек, которые сохраняет тест: ``given.settings`` и шаги ``settings``."""
+    data = test.data if isinstance(test.data, dict) else {}
+    given = data.get("given") if isinstance(data.get("given"), dict) else {}
+    saved = [given["settings"]] if "settings" in given else []
+    for step in data.get("steps") or ():
+        if isinstance(step, dict) and "settings" in step:
+            saved.append(step["settings"])
+    return saved
+
+
+def _package_settings(
+    d: dict[str, Any], parsed: dict[str, Any], target: str, tests: list[Any], objects: list[Any]
+) -> _Settings:
+    """Объявления настроек пакета и его ``requires`` кодом ядра (CP-ADR-0081 Б5)."""
+    pd = d["pd"]
+    out = _Settings()
+    own = parsed[target]
+    core, refs = d["package_settings"], d["settings_refs"]
+    if core is None:
+        # Пакет читает настройки или тест их задаёт, а ядро рядом их не знает: молча
+        # прогнать такие тесты нельзя — их значения ядро бы не увидело (FR-014).
+        declares = own.manifest_object is not None and "settings" in own.manifest_object.spec
+        if any(_test_settings(t) for t in tests) or (
+            declares and any("settings" in json.dumps(o.spec) for o in own.of_kind("Process"))
+        ):
+            out.problems.append(
+                pd.Problem(
+                    SETTINGS_UNSUPPORTED,
+                    "error",
+                    "/spec/settings",
+                    "the package reads its settings or its tests save them, and the "
+                    "control-plane code next to the SDK predates CP-ADR-0081 (no "
+                    "control_plane.domain.package_settings): the sandbox cannot run them",
+                    hint="the core at the revision with package settings, or --server",
+                    file="package.yaml",
+                )
+            )
+        return out
+    schemas: dict[str, Any] = {}
+    for key, package in parsed.items():
+        declaration = core.check_declaration(package)
+        if key == target:
+            out.problems.extend(declaration.problems)
+        manifest = package.manifest_object
+        schema = declaration.declared.schema if declaration.declared is not None else None
+        schemas[key] = schema
+        out.scopes[key] = refs.SettingsScope(manifest.key if manifest else key, schema)
+    schema = schemas.get(target)
+    catalog = {kind: {o.key for o in objects if o.kind == kind} for kind in _CATALOG_REFS.values()}
+    known: set[tuple[str, str]] = set()
+    for test in tests:
+        for values in _test_settings(test):
+            if schema is None or not isinstance(values, dict) or core.validate(values, schema):
+                continue
+            for ref in core.references(values, schema):
+                kind = _CATALOG_REFS.get(ref.kind)
+                if kind is None or ref.value in catalog[kind]:
+                    known.add((ref.kind, ref.value))
+    out.world = {
+        "settings_schema": schema,
+        "known_refs": frozenset(known),
+        # процесс из requires читает настройки своего пакета: в песочнице — по умолчанию
+        "other_settings": {
+            obj.key: core.effective({}, schemas[key])
+            for key, package in parsed.items()
+            if key != target and schemas.get(key) is not None
+            for obj in package.of_kind("Process")
+        },
+    }
+    return out
+
+
 def database_url(value: str | None = None) -> str | None:
     """Адрес базы песочницы: явный или из PACKAGE_SDK_SANDBOX_DATABASE_URL; драйвер ядра —
     psycopg (`postgresql://` дополняется до `postgresql+psycopg://`)."""
@@ -170,8 +296,8 @@ def _migrations() -> Path:
     scripts = root / "migrations"
     if not (scripts / "env.py").is_file():
         raise CoreMissing(
-            f"миграций ядра нет рядом с его кодом ({scripts}): тестам правил и типов задач "
-            "нужен control-plane из исходников (path-зависимость extra sandbox)"
+            f"the core's migrations are not next to its code ({scripts}): work rule and task type tests "
+            "need control-plane from source (path dependency of extra sandbox)"
         )
     return scripts
 
@@ -199,18 +325,19 @@ def database_refusal(
         return None
     if not {"public.alembic_version", "public.tenants"} <= tables:
         shown = ", ".join(sorted(tables)[:5]) + (" …" if len(tables) > 5 else "")
-        return f"база не пуста и не подготовлена песочницей (таблицы: {shown})"
+        return f"the database is not empty and was not prepared by the sandbox (tables: {shown})"
     if foreign_tenants:
         return (
-            "в базе есть tenant'ы не песочницы ("
+            "the database has tenants that are not the sandbox's ("
             + ", ".join(foreign_tenants)
-            + ") — это база стенда или чужая база"
+            + ") — this is a stand database or someone else's database"
         )
     if not sandbox_tenant:
         return (
-            f"в базе схема ядра, а tenant'а песочницы ({SANDBOX_TENANT}) нет — её готовила "
-            "не песочница, или первый прогон песочницы прервался между миграцией и заведением "
-            "tenant'а; пересоздайте базу (DROP DATABASE и CREATE DATABASE) и запустите снова"
+            f"the database has the core's schema but no sandbox tenant ({SANDBOX_TENANT}) — it was "
+            "prepared by something other than the sandbox, or the first sandbox run stopped "
+            "between the migration and creating the tenant; recreate the database "
+            "(DROP DATABASE and CREATE DATABASE) and run again"
         )
     return None
 
@@ -257,8 +384,8 @@ def _exclusive(url: str) -> Iterator[Any]:
                 refusal = database_refusal(tables, foreign, sandbox_tenant=own)
                 if refusal is not None:
                     raise cp.PackageError(
-                        f"песочница не пишет в эту базу: {refusal}; ей нужна своя пустая база "
-                        f"({DATABASE_ENV}), ничего не изменено"
+                        f"the sandbox does not write to this database: {refusal}; it needs its own empty database "
+                        f"({DATABASE_ENV}), nothing changed"
                     )
                 yield conn
             finally:
@@ -282,8 +409,9 @@ def _migrate(url: str, revision: str = "head") -> None:
         command.upgrade(config, revision)
     except CommandError as exc:
         raise cp.PackageError(
-            f"схему базы песочницы не привести к ядру закреплённой версии: {exc} — база "
-            "новее ядра или готовилась другим ядром; дайте песочнице новую пустую базу"
+            f"cannot bring the sandbox database schema to the pinned core version: {exc} — the "
+            "database is newer than the core or was prepared by another core; give the "
+            "sandbox a new empty database"
         ) from exc
     finally:
         if previous is None:
@@ -320,7 +448,8 @@ async def _caller(session_factory: Any) -> Any:
         if tenant is None:
             if await db.scalar(select(func.count()).select_from(Tenant)):
                 raise cp.PackageError(
-                    "в базе песочницы уже есть tenant не песочницы — ей нужна своя пустая база "
+                    "the sandbox database already has a tenant that is not the sandbox's — it needs its own "
+                    "empty database "
                     f"({DATABASE_ENV})"
                 )
             result = await bootstrap(
@@ -339,7 +468,7 @@ async def _caller(session_factory: Any) -> Any:
                 .limit(1)
             )
             if key is None:
-                raise cp.PackageError(f"у tenant {SANDBOX_TENANT} в базе песочницы нет ключа")
+                raise cp.PackageError(f"tenant {SANDBOX_TENANT} in the sandbox database has no key")
             kind = await db.scalar(select(Principal.kind).where(Principal.id == key.principal_id))
     return AuthContext(
         tenant_id=key.tenant_id,
@@ -400,7 +529,9 @@ def subject_tests(d: dict[str, Any], url: str, package: Any, tests: list[Any]) -
         ctx = _prepare(url)
         return asyncio.run(_subject_tests(d, url, package, tests, ctx))
     except (SQLAlchemyError, OSError) as exc:
-        raise cp.PackageError(f"база песочницы ({DATABASE_ENV}) недоступна: {exc}") from exc
+        raise cp.PackageError(
+            f"the sandbox database ({DATABASE_ENV}) is unavailable: {exc}"
+        ) from exc
 
 
 def _skipped(test: Any) -> dict[str, Any]:
@@ -434,7 +565,7 @@ def run_installation(
     pd, engine, sandbox, trials = d["pd"], d["engine"], d["sandbox"], d["trials"]
     started = time.monotonic()
     parsed = {
-        package.key: d["parse_package"](_files(package, env or {}))
+        package.key: d["parse_package"](_files(package, env or {}, d["kinds"]))
         for package in installation.required(target.key)
     }
     own = parsed[target.key]
@@ -472,8 +603,13 @@ def run_installation(
         artifact_types=frozenset(o.key for o in objects if o.kind == "ArtifactType"),
         processes=frozenset(o.key for o in objects if o.kind == "Process"),
     )
+    settings = _package_settings(d, parsed, target.key, processes, objects)
+    problems.extend(settings.problems)
     definitions: dict[str, Any] = {}
-    for package in parsed.values():
+    for key, package in parsed.items():
+        package_catalog = catalog
+        if key in settings.scopes:
+            package_catalog = replace(catalog, settings=settings.scopes[key])
         for obj in package.of_kind("Process"):
             try:
                 spec = _without_install_workspace(pd.normalized_spec(obj.spec))
@@ -483,11 +619,13 @@ def run_installation(
                         obj.place(pd.Problem("invalid_document", "error", exc.path, exc.message))
                     )
                 continue
-            checked = pd.check_process(obj.key, spec, catalog, file=obj.file, locate=obj.locate)
+            checked = pd.check_process(
+                obj.key, spec, package_catalog, file=obj.file, locate=obj.locate
+            )
             if package is own:
                 problems.extend(checked.problems)
             if not checked.errors:
-                definitions[obj.key] = engine.Definition.build(obj.key, spec, catalog)
+                definitions[obj.key] = engine.Definition.build(obj.key, spec, package_catalog)
 
     results: list[dict[str, Any]] = []
     coverage: list[Any] = []
@@ -501,6 +639,7 @@ def run_installation(
             agents=agents,
             roles=frozenset(o.key for o in objects if o.kind == "Role"),
             calendars=calendars,
+            **settings.world,
         )
         process_results = [sandbox.run_test(world, t.file, t.data) for t in processes]
         results = [
@@ -528,10 +667,10 @@ def run_installation(
                     DATABASE_REQUIRED,
                     "warning",
                     "/tests",
-                    f"тестов правил и типов задач: {len(subjects)} — они исполняются прикладным "
-                    "кодом ядра в откатываемой транзакции PostgreSQL, а базы песочницы нет; "
-                    "они не исполнялись",
-                    hint=f"пустая база — --database-url или {DATABASE_ENV}; либо --server",
+                    f"work rule and task type tests {len(subjects)} — they run in the core's "
+                    "application code in a rolled-back PostgreSQL transaction, and there is no "
+                    "sandbox database; they were not run",
+                    hint=f"an empty database — --database-url or {DATABASE_ENV}; or --server",
                 )
             )
             results += [_skipped(t) for t in subjects]
@@ -576,21 +715,26 @@ def packages_with_tests() -> list[str]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="package-sdk sandbox", description="тесты пакета кодом ядра в процессе, без стенда"
+        prog="package-sdk sandbox",
+        description="package tests by the core's code in-process, without a stand",
     )
     parser.add_argument(
         "packages",
         nargs="*",
-        help="ключи пакетов или каталоги с package.yaml; по умолчанию — все пакеты с тестами",
+        help="package keys or directories with package.yaml; by default all packages with tests",
     )
     parser.add_argument(
-        "--test", action="append", help="путь файла теста в пакете (tests/<имя>.test.yaml)"
+        "--test",
+        action="append",
+        help="path of a test file in the package (tests/<name>.test.yaml)",
     )
-    parser.add_argument("--json", action="store_true", help="ответы PackageTestOut в JSON")
-    parser.add_argument("--env", type=Path, default=Path(".env"), help="файл переменных установки")
+    parser.add_argument("--json", action="store_true", help="PackageTestOut responses as JSON")
+    parser.add_argument(
+        "--env", type=Path, default=Path(".env"), help="installation variables file"
+    )
     parser.add_argument(
         "--database-url",
-        help=f"пустая база PostgreSQL для тестов правил и типов задач (или {DATABASE_ENV})",
+        help=f"an empty PostgreSQL database for work rule and task type tests (or {DATABASE_ENV})",
     )
     args = parser.parse_args(argv)
     env = {**cp.read_env_file(args.env), **os.environ}
@@ -603,12 +747,12 @@ def main(argv: list[str] | None = None) -> int:
                 key, tests=args.test, env=env, database=database_url(args.database_url)
             )
         except (CoreMissing, cp.PackageError) as exc:
-            print("ошибка:", exc, file=sys.stderr)
+            print("error:", exc, file=sys.stderr)
             return 2
         reports.append(report)
         ok = ok and report["status"] == "passed"
         if not args.json:
-            print(f"== {key} (песочница ядра в процессе, {report['durationMs']} мс)")
+            print(f"== {key} (in-process core sandbox, {report['durationMs']} ms)")
             cp_core.print_test_report(report)
     if args.json:
         print(

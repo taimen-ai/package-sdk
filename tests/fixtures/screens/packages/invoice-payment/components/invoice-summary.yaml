@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/view.schema.json
+# The invoice itself: its param is typed by the data schema of the process.
+apiVersion: taimen.ai/v1
+kind: Component
+key: invoice-summary
+spec:
+  params:
+    invoice:
+      required: true
+      schema:
+        type: object
+        properties:
+          number: {type: string}
+          supplier: {type: string}
+          amount: {type: number}
+          currency: {type: string}
+  layout:
+    - block: fields
+      section: invoice-payment.card.invoice
+      items:
+        - {value: param.invoice.supplier}
+        - {value: param.invoice.amount, format: money}
+        - {value: param.invoice.currency}

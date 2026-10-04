@@ -206,15 +206,15 @@ def skills_step(package: model.Package, run: Runner = _run) -> Step:
     """Ступень 2: код интеграции ↔ YAML `kind: Skill` пакета (`skill-sdk export --check`)."""
     root = integration_root(package)
     if root is None:
-        return Step(package.key, SKIPPED, "нет кода интеграции (integration/)")
+        return Step(package.key, SKIPPED, "no integration code (integration/)")
     modules = integration_modules(root)
     if not modules:
-        return Step(package.key, SKIPPED, f"в {model._rel(root)} нет модулей")
+        return Step(package.key, SKIPPED, f"no modules in {model._rel(root)}")
     if not _has("skill_sdk"):
         return Step(
             package.key,
             ERROR,
-            "сверке контрактов скиллов нужен skill-sdk — установите package-sdk[skills]",
+            "skill contract check requires skill-sdk — install package-sdk[skills]",
             modules=modules,
         )
     command = [
@@ -237,14 +237,14 @@ def integration_step(package: model.Package, run: Runner = _run) -> Step:
     root = integration_root(package)
     tests = package.path / INTEGRATION / "tests"
     if root is None or not tests.is_dir():
-        return Step(package.key, SKIPPED, "нет тестов кода интеграции (integration/tests/)")
+        return Step(package.key, SKIPPED, "no integration code tests (integration/tests/)")
     if not _has("pytest"):
-        return Step(package.key, ERROR, "тестам кода интеграции нужен pytest")
+        return Step(package.key, ERROR, "integration code tests require pytest")
     command = [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", str(tests)]
     done = run(command, package.path / INTEGRATION, _environ(root))
     output = _tail(done.stdout + done.stderr)
     if done.returncode == PYTEST_NO_TESTS:
-        return Step(package.key, SKIPPED, output or "pytest не нашёл тестов")
+        return Step(package.key, SKIPPED, output or "pytest found no tests")
     return Step(package.key, PASSED if done.returncode == 0 else FAILED, output)
 
 
@@ -312,7 +312,7 @@ class Pyramid:
             chosen = self.selected(package)
             if self.wanted() and not chosen:
                 names = ", ".join(repr(w) for w in self.wanted())
-                stage.steps.append(Step(package.key, SKIPPED, f"нет теста {names}"))
+                stage.steps.append(Step(package.key, SKIPPED, f"no test {names}"))
                 continue
             try:
                 report = self._scenario_report(package, chosen)
@@ -320,7 +320,7 @@ class Pyramid:
                 stage.steps.append(Step(package.key, ERROR, str(error)))
                 continue
             except (urllib.error.URLError, OSError) as error:
-                stage.steps.append(Step(package.key, ERROR, f"ядро недоступно: {error}"))
+                stage.steps.append(Step(package.key, ERROR, f"the core is unreachable: {error}"))
                 continue
             except model.PackageError as error:
                 stage.steps.append(Step(package.key, ERROR, str(error)))
@@ -374,7 +374,7 @@ class Pyramid:
             stage.duration_ms = int((time.monotonic() - began) * 1000)
             self.stages.append(stage)
             if name == "check" and stage.status != PASSED:
-                blocked = "статическая проверка не пройдена — тесты не запускались"
+                blocked = "static check failed — tests were not run"
         return self.report(int((time.monotonic() - started) * 1000))
 
     def _each(self, name: str, step: Callable[[model.Package, Runner], Step]) -> Stage:
@@ -485,7 +485,7 @@ def divergence(sandbox: dict[str, Any], server: dict[str, Any]) -> list[str]:
     for field_name in ("status", "checkOnly"):
         mine, theirs = left.get(field_name), right.get(field_name)
         if mine != theirs:
-            found.append(f"{field_name}: песочница {mine!r}, сервер {theirs!r}")
+            found.append(f"{field_name}: sandbox {mine!r}, server {theirs!r}")
     for field_name in ("problems", "coverage", "ruleCoverage", "taskTypeCoverage"):
         mine = sorted(left.get(field_name) or [], key=lambda item: json.dumps(item, sort_keys=True))
         theirs = sorted(
@@ -493,26 +493,26 @@ def divergence(sandbox: dict[str, Any], server: dict[str, Any]) -> list[str]:
         )
         if mine != theirs:
             found.append(
-                f"{field_name}: песочница {json.dumps(mine, ensure_ascii=False)}, "
-                f"сервер {json.dumps(theirs, ensure_ascii=False)}"
+                f"{field_name}: sandbox {json.dumps(mine, ensure_ascii=False)}, "
+                f"server {json.dumps(theirs, ensure_ascii=False)}"
             )
     tests = {t.get("file"): t for t in left.get("tests") or []}
     served = {t.get("file"): t for t in right.get("tests") or []}
     for file in sorted(set(tests) | set(served), key=str):
         if tests.get(file) != served.get(file):
             found.append(
-                f"{file}: песочница {json.dumps(tests.get(file), ensure_ascii=False)}, "
-                f"сервер {json.dumps(served.get(file), ensure_ascii=False)}"
+                f"{file}: sandbox {json.dumps(tests.get(file), ensure_ascii=False)}, "
+                f"server {json.dumps(served.get(file), ensure_ascii=False)}"
             )
     return found
 
 
 _MARKS = {PASSED: "ok  ", FAILED: "FAIL", ERROR: "ERR ", SKIPPED: "SKIP"}
 _TITLES = {
-    "check": "проверка: схема, ссылки, валидаторы ядра",
-    "skills": "контракты скиллов (skill-sdk export --check)",
-    "integration": "тесты кода интеграции (pytest)",
-    "scenarios": "сценарии пакета",
+    "check": "check: schema, references, core validators",
+    "skills": "skill contracts (skill-sdk export --check)",
+    "integration": "integration code tests (pytest)",
+    "scenarios": "package scenarios",
 }
 
 
@@ -520,14 +520,14 @@ def print_report(report: dict[str, Any], log: Callable[[str], None] = print) -> 
     for stage in report["stages"]:
         title = _TITLES[stage["stage"]]
         if stage["stage"] == "scenarios" and stage.get("detail") in ("server", "sandbox"):
-            title += " — " + ("сервер" if stage["detail"] == "server" else "песочница ядра")
+            title += " — " + ("server" if stage["detail"] == "server" else "core sandbox")
         log(f"{_MARKS.get(stage['status'], stage['status'])} {title}")
         if stage["stage"] == "check":
             for warning in stage.get("warnings") or []:
-                log(f"   предупреждение: {warning}")
+                log(f"   warning: {warning}")
             for problem in stage.get("problems") or []:
                 where = f"{problem['file']}: " if problem.get("file") else ""
-                log(f"   ошибка: {where}{problem.get('message', '')}")
+                log(f"   error: {where}{problem.get('message', '')}")
             continue
         if stage.get("detail") and stage["status"] == SKIPPED and not stage.get("packages"):
             log(f"   {stage['detail']}")
@@ -547,7 +547,11 @@ def print_report(report: dict[str, Any], log: Callable[[str], None] = print) -> 
                 log(f"   {mark} {step['package']}: " + (lines[-1] if lines else ""))
     totals = report["coverage"]["totals"]
     parts = []
-    for group, title in (("processes", "процессы"), ("rules", "правила"), ("taskTypes", "типы")):
+    for group, title in (
+        ("processes", "processes"),
+        ("rules", "rules"),
+        ("taskTypes", "task types"),
+    ):
         counters = [
             f"{name} {value['covered']}/{value['total']}"
             for name, value in totals[group].items()
@@ -556,12 +560,12 @@ def print_report(report: dict[str, Any], log: Callable[[str], None] = print) -> 
         if counters:
             parts.append(f"{title}: {', '.join(counters)}")
     if parts:
-        log("покрытие — " + "; ".join(parts))
+        log("coverage — " + "; ".join(parts))
     for item in report["coverage"]["untested"]:
-        log(f"   без сценариев: {item}")
+        log(f"   no scenarios: {item}")
     log(
-        ("ok" if report["status"] == PASSED else "не пройдено")
-        + f": пирамида пакетов {', '.join(report['packages'])} ({report['durationMs']} мс)"
+        ("ok" if report["status"] == PASSED else "failed")
+        + f": test pyramid of packages {', '.join(report['packages'])} ({report['durationMs']} ms)"
     )
 
 
@@ -588,27 +592,28 @@ def _installation(args: argparse.Namespace) -> tuple[model.Installation, list[st
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="package-sdk test",
-        description="пирамида тестов пакета одной командой: проверка, скиллы, интеграция, сценарии",
+        description="package test pyramid in one command: check, skills, integration, scenarios",
     )
-    parser.add_argument("paths", nargs="*", help="пакеты: каталоги с package.yaml или ключи")
+    parser.add_argument("paths", nargs="*", help="packages: directories with package.yaml or keys")
     parser.add_argument(
-        "--package", action="append", help="пакет (каталог или ключ); можно несколько"
+        "--package", action="append", help="package (directory or key); may be repeated"
     )
-    parser.add_argument("--install", type=Path, help="файл установки: все её пакеты")
-    parser.add_argument("--test", help="только сценарий с этим именем или файлом")
+    parser.add_argument("--install", type=Path, help="installation file: all of its packages")
+    parser.add_argument("--test", help="only the scenario with this name or file")
     parser.add_argument(
-        "--server", help="Control Plane: сценарии исполняет сервер; без него — песочница"
+        "--server", help="Control Plane: the server runs the scenarios; without it — the sandbox"
     )
-    parser.add_argument("--env", type=Path, default=Path(".env"), help="переменные установки")
+    parser.add_argument("--env", type=Path, default=Path(".env"), help="installation variables")
     parser.add_argument(
-        "--workspace", help="с --server: workspace, чьи роли, календари и экземпляры читает прогон"
+        "--workspace",
+        help="with --server: the workspace whose roles, calendars and instances the run reads",
     )
     parser.add_argument(
         "--database-url",
-        help="песочница: пустая база PostgreSQL для сценариев правил и типов задач "
-        "(или PACKAGE_SDK_SANDBOX_DATABASE_URL)",
+        help="sandbox: an empty PostgreSQL database for rule and task type scenarios "
+        "(or PACKAGE_SDK_SANDBOX_DATABASE_URL)",
     )
-    parser.add_argument("--json", action="store_true", help="отчёт пирамиды документом JSON")
+    parser.add_argument("--json", action="store_true", help="pyramid report as a JSON document")
     args = parser.parse_args(argv)
     from package_sdk import sandbox
 
@@ -624,11 +629,11 @@ def main(argv: list[str] | None = None) -> int:
             database=sandbox.database_url(args.database_url),
         )
         if args.test and not any(pyramid.selected(p) for p in pyramid.packages()):
-            print(f"нет тестов: в пакетах {', '.join(named)} нет сценария {args.test!r}")
+            print(f"no tests: packages {', '.join(named)} have no scenario {args.test!r}")
             return 1
         report = pyramid.execute()
     except (model.PackageError, RuntimeError) as error:
-        print("ошибка:", error, file=sys.stderr)
+        print("error:", error, file=sys.stderr)
         return 1
     if args.json:
         print(json.dumps(report, ensure_ascii=False, indent=2))

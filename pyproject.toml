@@ -1,6 +1,6 @@
 [project]
 name = "package-sdk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Tools and library for authoring catalog packages: checks, tests executed by the core, installation plans, connector runtime (TAI-ADR-0062)"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -31,8 +31,8 @@ all = ["package-sdk[sandbox,connector,skills,mcp]"]
 package-sdk = "package_sdk.cli:main"
 
 [tool.uv.sources]
-control-plane = { path = "../control-plane", editable = true }
-control-plane-client = { path = "../control-plane/client", editable = true }
+control-plane = { path = "../../services/control-plane", editable = true }
+control-plane-client = { path = "../../services/control-plane/client", editable = true }
 skill-sdk = { path = "../skill-sdk", editable = true }
 
 [dependency-groups]
@@ -58,8 +58,8 @@ package = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Фикстуры — пакеты с их собственными тестами (код интеграции): их гоняет `package-sdk test`
-# в подпроцессе, а не pytest SDK.
+# Fixtures are packages with tests of their own (integration code): `package-sdk test` runs
+# them in a subprocess, not the SDK's pytest.
 norecursedirs = [".*", "*.egg", "build", "dist", "venv", "node_modules", "fixtures"]
 
 [tool.ruff]
@@ -72,15 +72,15 @@ select = ["E", "W", "F", "I", "UP", "B", "SIM", "RUF"]
 ignore = ["RUF001", "RUF002", "RUF003"]
 
 [tool.ruff.lint.per-file-ignores]
-# Перенесено из tools/cp_packages.py, tools/pkg.py, tools/package_sandbox.py суперпроекта
-# без правки тел функций (S006, паритет поведения): длинные строки справки и сообщений,
-# замыкания проверки ссылок, вызываемые в той же итерации цикла. Сводится при
-# переписывании установки (S013).
+# Moved from tools/cp_packages.py, tools/pkg.py, tools/package_sandbox.py of the superproject
+# without editing function bodies (S006, behaviour parity): long help and message lines,
+# reference-check closures called within the same loop iteration. To be reduced when the
+# installation is rewritten (S013).
 "src/package_sdk/{model,source,check,apply,core,migrate,commands,edit,sandbox}.py" = ["E501", "B023", "RUF005"]
-# Фикстуры тестов установки (поддельное ядро) импортируются в тесты MCP-сервера автора и
-# авторизации и приходят параметрами тестов.
+# Installation test fixtures (a fake core) are imported into the tests of the author's MCP
+# server and of authorization and arrive as test parameters.
 "tests/{test_mcp,test_auth}.py" = ["F811"]
-# Тесты инструментов перенесены из tools/tests суперпроекта как есть (S006).
+# Tool tests moved from tools/tests of the superproject as they were (S006).
 "tests/umbrella/*.py" = ["E501", "B023", "RUF005", "RUF012", "RUF015", "RUF043", "SIM", "B", "E741"]
 
 [tool.mypy]
@@ -90,9 +90,9 @@ mypy_path = "src"
 packages = ["package_sdk"]
 ignore_missing_imports = true
 
-# Перенесено из tools/ суперпроекта без правки тел функций (S006): под strict он не
-# писался. Модули уходят из этого списка по одному, когда их типы доведены: model,
-# source и core — в S013 (установка — новый strict-модуль package_sdk.install).
+# Moved from tools/ of the superproject without editing function bodies (S006): it was not
+# written for strict. Modules leave this list one by one as their types are completed: model,
+# source and core in S013 (installation is the new strict module package_sdk.install).
 [[tool.mypy.overrides]]
 module = [
     "package_sdk.check",

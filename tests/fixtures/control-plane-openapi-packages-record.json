@@ -96,6 +96,7 @@
               "WorkspaceType",
               "Role",
               "Capability",
+              "ConnectionType",
               "Skill",
               "WorkRule",
               "Agent"

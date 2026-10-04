@@ -105,7 +105,7 @@ class Bearer:
             answer = exchange()
             token = str(answer.get("accessToken") or "")
             if not token:
-                raise RuntimeError("обмен учётки не вернул accessToken")
+                raise RuntimeError("credential exchange returned no accessToken")
             expires_in = float(answer.get("expiresIn") or 0)
             state["token"] = token
             state["until"] = clock() + expires_in
@@ -130,7 +130,7 @@ def bearer(source: TokenSource) -> Bearer:
         return Bearer.static_token(source)
     if callable(source):
         return Bearer(source)
-    raise TypeError(f"источник токена — строка, функция или Bearer, а не {type(source)!r}")
+    raise TypeError(f"token source must be a string, a function or Bearer, not {type(source)!r}")
 
 
 def error_code(body: Any) -> str | None:

@@ -13,22 +13,24 @@ ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_DISABLE_PIP_VERSION_CHECK=1
 # uv: the skills image of a package installs its integration with it
 RUN pip install --no-cache-dir uv
 # Only what the builds need: the project files and the sources — never .git or tests.
-COPY --from=auth pyproject.toml README.md /opt/platform/platform-auth-sdk/
-COPY --from=auth src /opt/platform/platform-auth-sdk/src
-COPY --from=llm pyproject.toml README.md /opt/platform/platform-llm/
-COPY --from=llm src /opt/platform/platform-llm/src
-COPY --from=skill-sdk pyproject.toml README.md /opt/platform/skill-sdk/
-COPY --from=skill-sdk src /opt/platform/skill-sdk/src
-COPY --from=control-plane pyproject.toml README.md /opt/platform/control-plane/
-COPY --from=control-plane client /opt/platform/control-plane/client
-COPY --from=control-plane src /opt/platform/control-plane/src
+# The components lie in the umbrella layout (TAI-ADR-0064): uv honours the path
+# sources of their pyproject (../../sdk/platform-auth-sdk from services/control-plane).
+COPY --from=auth pyproject.toml README.md /opt/platform/sdk/platform-auth-sdk/
+COPY --from=auth src /opt/platform/sdk/platform-auth-sdk/src
+COPY --from=llm pyproject.toml README.md /opt/platform/sdk/platform-llm/
+COPY --from=llm src /opt/platform/sdk/platform-llm/src
+COPY --from=skill-sdk pyproject.toml README.md /opt/platform/sdk/skill-sdk/
+COPY --from=skill-sdk src /opt/platform/sdk/skill-sdk/src
+COPY --from=control-plane pyproject.toml README.md /opt/platform/services/control-plane/
+COPY --from=control-plane client /opt/platform/services/control-plane/client
+COPY --from=control-plane src /opt/platform/services/control-plane/src
 # The executor's environment is a virtual environment, as in the executor image of the
 # platform: `package-sdk image skills` installs the integration into it.
 ENV VIRTUAL_ENV=/opt/platform/venv PATH=/opt/platform/venv/bin:$PATH
 RUN uv venv /opt/platform/venv \
- && uv pip install --no-cache /opt/platform/platform-auth-sdk \
-      /opt/platform/platform-llm /opt/platform/control-plane/client /opt/platform/control-plane \
-      "/opt/platform/skill-sdk[llm]" \
+ && uv pip install --no-cache /opt/platform/sdk/platform-auth-sdk \
+      /opt/platform/sdk/platform-llm /opt/platform/services/control-plane/client \
+      /opt/platform/services/control-plane "/opt/platform/sdk/skill-sdk[llm]" \
  && python -c "import skill_sdk, control_plane_client, control_plane_agent"
 # The agent's PAT is the node's file /run/secrets/agent-pat; it lives only in the
 # environment of the daemon, never in the image.

@@ -1,0 +1,10 @@
+claims-intake.title: Приём претензий
+claims-intake.settings.refundThreshold: Порог возврата
+claims-intake.settings.refundThreshold.help: Претензии выше порога решает человек
+claims-intake.settings.escalate: Передавать крупные претензии
+claims-intake.settings.escalationRole: Роль эскалации
+claims-intake.settings.channel: Канал ответа
+claims-intake.settings.tags: Метки
+claims-intake.settings.intake: Приём
+claims-intake.settings.intake.mailbox: Почтовый ящик
+claims-intake.settings.groups.approval: Согласование

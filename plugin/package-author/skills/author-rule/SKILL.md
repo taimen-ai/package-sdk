@@ -61,14 +61,23 @@ description: Описать правило вывода работы (WorkRule) 
 
 3. **Опиши правило:**
    - `trigger` — `{kind: observation, type: …}`, `{kind: event, …}` или
-     `{kind: schedule, …}`;
+     `{kind: schedule, …}`; у наблюдения `agent` — фильтр автора: правило срабатывает,
+     только если наблюдение записал principal этого агента (ключ агента пакета или
+     переменная установки `${…}`, если агента называет установка);
    - `condition` — грамматика правил ядра: `and`, `or`, `not`, `exists`, `eq`, `ne`,
      `var` над `payload`;
    - `interpretation` — `{skill: name@version, inputs: {…}}`; выход — `skill.output.*`
      в шаблонах действия;
    - `action.kind` — `ensure_work` (заводит работу один раз на `dedupKeyTemplate`),
-     `update_work`, `cancel_work`, `complete_work`, `request_decision`; `taskType` и
+     `update_work`, `cancel_work`, `complete_work`, `request_decision`; у
+     `complete_work` и `cancel_work` `target: task` закрывает задачу, к которой
+     привязано наблюдение-триггер (а не работу по ключу правила): нужны `taskTypes` —
+     какие типы правило вправе закрыть — и фильтр автора `trigger.agent`; `taskType` и
      `fields` (`title`, `customFields`, `relations`) — шаблонами `{{payload.…}}`;
+     решение `request_decision` адресуется `fields.approver` (principal) или
+     `fields.approverRole` — ролью пакета `role:<slug>`, например
+     `approverRole: "role:approvers"`: роли нет в tenant'е — ядро не опубликует правило
+     (`unknown_role`, поле `action.fields.approverRole`);
    - `identity: {agent: <ключ>}` — личность правила: описание агента вида `service`
      (`placement: none`) в пакете или `requires`; без неё правило действует
      полномочиями того, кто его применил;

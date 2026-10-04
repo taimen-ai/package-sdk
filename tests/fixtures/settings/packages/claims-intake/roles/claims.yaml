@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Role
+key: claims
+spec:
+  name: Claims
+  description: Decides on the claims above the refund threshold

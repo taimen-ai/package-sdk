@@ -108,43 +108,43 @@ def test_extract_steps_in_order() -> None:
 @pytest.mark.parametrize(
     ("page", "message"),
     [
-        (f"{F}yaml\nkey: x\n{F}\n", "блок «yaml» без разметки"),
+        (f"{F}yaml\nkey: x\n{F}\n", 'block "yaml" without markup'),
         # Шаг не выпадает молча: пустой и неизвестный язык — ошибка, а не иллюстрация.
-        (f"{F}bash\ntrue\n{F}\n\n{F}\npackage-sdk publish .\n{F}\n", "блок без языка"),
-        (f"{F}bash\ntrue\n{F}\n{F}console\n$ package-sdk publish .\n{F}\n", "«console»"),
-        (f"{F}bash\ntrue\n{F}\n{F}zsh\npackage-sdk publish .\n{F}\n", "«zsh»"),
-        (f"{F}bash\ntrue\n{F}\n{F}{{.bash}}\npackage-sdk publish .\n{F}\n", "«{.bash}»"),
+        (f"{F}bash\ntrue\n{F}\n\n{F}\npackage-sdk publish .\n{F}\n", "block without a language"),
+        (f"{F}bash\ntrue\n{F}\n{F}console\n$ package-sdk publish .\n{F}\n", '"console"'),
+        (f"{F}bash\ntrue\n{F}\n{F}zsh\npackage-sdk publish .\n{F}\n", '"zsh"'),
+        (f"{F}bash\ntrue\n{F}\n{F}{{.bash}}\npackage-sdk publish .\n{F}\n", '"{.bash}"'),
         (
             f"<!--\nquickstart: skip стенд\n-->\n{F}bash\ntrue\n{F}\n",
-            "многострочном комментарии",
+            "multi-line comment",
         ),
         (
             f"<!-- пояснение\n  quickstart: file a.yaml -->\n{F}yaml\nk: v\n{F}\n",
-            "многострочном комментарии",
+            "multi-line comment",
         ),
-        (f"<!--\n{F}bash\ntrue\n{F}\n-->\n{F}bash\ntrue\n{F}\n", "внутри HTML-комментария"),
-        (f"{F}bash\ntrue\n{F}\n<!-- не закрыт\n", "не закрыт"),
+        (f"<!--\n{F}bash\ntrue\n{F}\n-->\n{F}bash\ntrue\n{F}\n", "inside an HTML comment"),
+        (f"{F}bash\ntrue\n{F}\n<!-- не закрыт\n", "not closed"),
         (
             f"<!-- quickstart: file a.yaml -->\n{F}yaml\nref: <версия>\n{F}\n{F}bash\ntrue\n{F}\n",
-            "подстановка <версия>",
+            "placeholder <версия>",
         ),
-        (f"<!-- quickstart: frobnicate -->\n{F}bash\ntrue\n{F}\n", "неизвестная разметка"),
-        (f"<!-- quickstart: skip -->\n{F}bash\ntrue\n{F}\n", "skip без причины"),
-        (f"<!-- quickstart: file /etc/x -->\n{F}yaml\nk: v\n{F}\n", "только относительный"),
-        (f"<!-- quickstart: file ../x.yaml -->\n{F}yaml\nk: v\n{F}\n", "без «..»"),
-        (f"<!-- quickstart: skip стенд -->\nтекст\n{F}bash\ntrue\n{F}\n", "не стоит прямо перед"),
-        (f"{F}bash\ntrue\n{F}\n<!-- quickstart: skip стенд -->\n", "в конце страницы"),
+        (f"<!-- quickstart: frobnicate -->\n{F}bash\ntrue\n{F}\n", "unknown markup"),
+        (f"<!-- quickstart: skip -->\n{F}bash\ntrue\n{F}\n", "skip without a reason"),
+        (f"<!-- quickstart: file /etc/x -->\n{F}yaml\nk: v\n{F}\n", "relative only"),
+        (f"<!-- quickstart: file ../x.yaml -->\n{F}yaml\nk: v\n{F}\n", 'without ".."'),
+        (f"<!-- quickstart: skip стенд -->\nтекст\n{F}bash\ntrue\n{F}\n", "is not right before"),
+        (f"{F}bash\ntrue\n{F}\n<!-- quickstart: skip стенд -->\n", "at the end of the page"),
         (
             f"<!-- quickstart: skip a -->\n<!-- quickstart: skip b -->\n{F}bash\ntrue\n{F}\n",
-            "другая разметка",
+            "another markup",
         ),
-        (f"текст <!-- quickstart: skip a -->\n{F}bash\ntrue\n{F}\n", "строку целиком"),
-        (f"<!-- quickstart: requires db -->\n{F}bash\ntrue\n{F}\n", "только docker"),
-        (f"<!-- quickstart: requires docker -->\n{F}yaml\nk: v\n{F}\n", "только для блоков"),
-        (f"<!-- quickstart: without-docker output=x -->\n{F}bash\ntrue\n{F}\n", "без exit"),
-        (f"{F}bash\ngit clone --branch <версия> https://x/y.git\n{F}\n", "подстановка <версия>"),
-        (f"{F}bash\ntrue\n", "не закрыт"),
-        (f"{F}text\nтолько вывод\n{F}\n", "нет исполняемых шагов"),
+        (f"текст <!-- quickstart: skip a -->\n{F}bash\ntrue\n{F}\n", "the whole line"),
+        (f"<!-- quickstart: requires db -->\n{F}bash\ntrue\n{F}\n", "knows only docker"),
+        (f"<!-- quickstart: requires docker -->\n{F}yaml\nk: v\n{F}\n", "for shell blocks only"),
+        (f"<!-- quickstart: without-docker output=x -->\n{F}bash\ntrue\n{F}\n", "without exit"),
+        (f"{F}bash\ngit clone --branch <версия> https://x/y.git\n{F}\n", "placeholder <версия>"),
+        (f"{F}bash\ntrue\n", "not closed"),
+        (f"{F}text\nтолько вывод\n{F}\n", "no executable steps"),
     ],
 )
 def test_extract_rejects(page: str, message: str) -> None:
@@ -187,7 +187,7 @@ def test_render_modes() -> None:
     assert docker.index(trap) < docker.index("\ndocker run -d")
     assert "qs_rc" not in docker
     plain = qs.render(page, docker=False)
-    assert "\ndocker run" not in plain and "нужен Docker" in plain
+    assert "\ndocker run" not in plain and "needs Docker" in plain
     assert '"$qs_rc" -ne 1' in plain and "sandbox_database_required" in plain
     assert 'bash -eo pipefail "$qs_step"' in plain
     assert "package-sdk plan" not in plain
@@ -249,14 +249,14 @@ grep -q "key: a" tests/a.yaml
 @pytest.mark.parametrize(
     ("page", "message"),
     [
-        (f"{F}bash\ntrue\nfalse\n{F}\n", "упал"),
-        (f"<!-- quickstart: without-docker exit=1 -->\n{F}bash\ntrue\n{F}\n", "упал"),
+        (f"{F}bash\ntrue\nfalse\n{F}\n", "failed"),
+        (f"<!-- quickstart: without-docker exit=1 -->\n{F}bash\ntrue\n{F}\n", "failed"),
         (
             f"<!-- quickstart: without-docker exit=1 output=needle -->\n{F}bash\nexit 1\n{F}\n",
-            "упал",
+            "failed",
         ),
         # Промежуточный сбой блока without-docker не маскируется ожидаемым кодом в конце.
-        (f"<!-- quickstart: without-docker exit=3 -->\n{F}bash\nfalse\nexit 3\n{F}\n", "упал"),
+        (f"<!-- quickstart: without-docker exit=3 -->\n{F}bash\nfalse\nexit 3\n{F}\n", "failed"),
     ],
 )
 def test_run_fails_on_broken_step(
@@ -270,7 +270,7 @@ def test_run_fails_on_broken_step(
 
 
 def test_run_enforces_time_limit(tmp_path: Path) -> None:
-    with pytest.raises(qs.QuickstartError, match="не уложился в 1 с"):
+    with pytest.raises(qs.QuickstartError, match="did not fit in 1 s"):
         _run(f"{F}bash\nsleep 30\n{F}\n", tmp_path, timeout=1)
 
 
@@ -344,19 +344,19 @@ def test_pin_update_and_check(tmp_path: Path) -> None:
     )
     qs.pin_update(repo, "HEAD", pin)
     assert json.loads(pin.read_text())["commit"] == first
-    assert "актуально" in qs.pin_check(repo, "HEAD", pin)
+    assert "up to date" in qs.pin_check(repo, "HEAD", pin)
 
     commit(PAGE.replace("Установите:", "Поставьте:"))
-    assert "проза страницы менялась" in qs.pin_check(repo, "HEAD", pin)
+    assert "page prose changed" in qs.pin_check(repo, "HEAD", pin)
 
     commit(PAGE.replace("package-sdk test .", "package-sdk test --strict ."))
-    with pytest.raises(qs.QuickstartError, match="изменились после закрепления"):
+    with pytest.raises(qs.QuickstartError, match="changed after pinning"):
         qs.pin_check(repo, "HEAD", pin)
 
     stale = json.loads(pin.read_text())
     stale["plan"] = "sha256:0"
     pin.write_text(json.dumps(stale), encoding="utf-8")
-    with pytest.raises(qs.QuickstartError, match="без `pin update`"):
+    with pytest.raises(qs.QuickstartError, match="without `pin update`"):
         qs.pin_check(repo, first, pin)
 
 
@@ -391,7 +391,7 @@ def test_pin_commit_reachable(tmp_path: Path) -> None:
     """Приватная раскладка: коммит достижим — сверка и прогон по коммиту, как прежде."""
     private, pin, commit = _pinned(tmp_path)
     assert qs.pin_status(private, "HEAD", pin).splitlines()[:2] == ["page=present", "mode=commit"]
-    assert "актуально" in qs.pin_check(private, "HEAD", pin)
+    assert "up to date" in qs.pin_check(private, "HEAD", pin)
     # голова ушла вперёд прозой — run всё равно берёт закреплённый коммит
     (private / "guide" / "quickstart.md").write_text(
         PAGE.replace("Установите:", "Поставьте:"), encoding="utf-8"
@@ -407,7 +407,7 @@ def test_pin_commit_unreachable_same_content(tmp_path: Path) -> None:
     head = _git(public, "rev-parse", "HEAD")
     assert head != commit and not qs.commit_reachable(public, commit)
     assert qs.pin_status(public, "HEAD", pin).splitlines()[:2] == ["page=present", "mode=content"]
-    assert "сверка по содержимому" in qs.pin_check(public, "HEAD", pin)
+    assert "checked by content" in qs.pin_check(public, "HEAD", pin)
     found, text = qs.pinned_page(public, json.loads(pin.read_text()))
     assert found == head and "Поставьте:" in text
 
@@ -416,10 +416,55 @@ def test_pin_commit_unreachable_same_content(tmp_path: Path) -> None:
         PAGE.replace("package-sdk test .", "package-sdk test --strict ."), encoding="utf-8"
     )
     _git(public, "commit", "--quiet", "-am", "commands")
-    with pytest.raises(qs.QuickstartError, match="страница изменилась — `pin update`"):
+    with pytest.raises(qs.QuickstartError, match="the page changed — `pin update`"):
         qs.pin_check(public, "HEAD", pin)
-    with pytest.raises(qs.QuickstartError, match="страница изменилась — `pin update`"):
+    with pytest.raises(qs.QuickstartError, match="the page changed — `pin update`"):
         qs.pinned_page(public, json.loads(pin.read_text()))
+
+
+def test_pin_bilingual_umbrella_checks_the_russian_projection(tmp_path: Path) -> None:
+    """Зонтик двуязычный: quickstart.md — английский перевод (`<tag>`, свои комментарии),
+    русская проекция исходника — quickstart.ru.md. Сверка по содержимому берёт её, а не
+    перевод: иначе «unknown placeholder <tag>» и план, который никогда не совпадёт."""
+    _, pin, commit = _pinned(tmp_path)
+    english = (
+        PAGE.replace("<тег ядра>", "<core tag>")
+        .replace("<тег>", "<tag>")
+        .replace("Установите:", "Install:")
+    )
+    with pytest.raises(qs.QuickstartError, match="unknown placeholder <tag>"):
+        qs.extract(english)
+    public = _umbrella(tmp_path / "public", english)
+    (public / "guide" / "quickstart.ru.md").write_text(
+        PAGE.replace("Установите:", "Поставьте:"), encoding="utf-8"
+    )
+    _git(public, "add", ".")
+    _git(public, "commit", "--quiet", "-m", "ru")
+    head = _git(public, "rev-parse", "HEAD")
+    assert not qs.commit_reachable(public, commit)
+    assert qs.pin_status(public, "HEAD", pin).splitlines() == [
+        "page=present",
+        "mode=content",
+        "path=guide/quickstart.ru.md",
+    ]
+    assert "checked by content" in qs.pin_check(public, "HEAD", pin)
+    found, text = qs.pinned_page(public, json.loads(pin.read_text()))
+    assert found == head and "Поставьте:" in text
+
+    # команды русской проекции изменились — ошибка называет её путь
+    (public / "guide" / "quickstart.ru.md").write_text(
+        PAGE.replace("package-sdk test .", "package-sdk test --strict ."), encoding="utf-8"
+    )
+    _git(public, "commit", "--quiet", "-am", "commands")
+    with pytest.raises(qs.QuickstartError, match=r"the plan of guide/quickstart\.ru\.md"):
+        qs.pin_check(public, "HEAD", pin)
+
+
+def test_ru_projection_path() -> None:
+    assert qs.ru_projection("guide/docs/packages/quickstart.md") == (
+        "guide/docs/packages/quickstart.ru.md"
+    )
+    assert qs.ru_projection("guide/quickstart.ru.md") == "guide/quickstart.ru.md"
 
 
 def test_pin_page_not_published(tmp_path: Path) -> None:
@@ -427,9 +472,9 @@ def test_pin_page_not_published(tmp_path: Path) -> None:
     _, pin, _ = _pinned(tmp_path)
     public = _umbrella(tmp_path / "public", None)
     assert qs.pin_status(public, "HEAD", pin).splitlines()[:2] == ["page=missing", "mode=missing"]
-    with pytest.raises(qs.PageMissing, match="ещё не опубликована"):
+    with pytest.raises(qs.PageMissing, match="not published in the umbrella yet"):
         qs.pin_check(public, "HEAD", pin)
-    with pytest.raises(qs.PageMissing, match="ещё не опубликована"):
+    with pytest.raises(qs.PageMissing, match="not published in the umbrella yet"):
         qs.pinned_page(public, json.loads(pin.read_text()))
 
 
@@ -437,3 +482,30 @@ def test_repository_pin_is_well_formed() -> None:
     pin = qs.load_pin()
     assert len(pin["commit"]) == 40 and pin["plan"].startswith("sha256:")
     assert pin["path"].endswith("quickstart.md")
+
+
+def test_neighbours_are_found_by_the_layout_manifest(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Соседи — по манифесту раскладки SDK, а не по плоскому <корень>/<имя> (TAI-ADR-0064)."""
+    # поставляемый манифест — раскладка umbrella (фаза 2)
+    assert qs.layout()["control-plane"] == "services/control-plane"
+    assert qs.installation_root() == REPO.parents[1]
+    flat = tmp_path / "layout.json"
+    flat.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "components": {"package-sdk": "package-sdk", "control-plane": "control-plane"},
+            }
+        ),
+        encoding="utf-8",
+    )
+    with monkeypatch.context() as patched:
+        patched.setattr(qs, "LAYOUT_FILE", flat)
+        assert qs.installation_root() == REPO.parent
+    root = tmp_path / "root"
+    (root / "control-plane" / ".git").mkdir(parents=True)  # плоское место не годится
+    page = f"{F}bash\ngit clone https://example.org/org/control-plane\n{F}\n"
+    with pytest.raises(qs.QuickstartError, match=r"services/control-plane is not a git clone"):
+        _run(page, tmp_path, neighbours=root)

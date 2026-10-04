@@ -1879,6 +1879,17 @@
       ],
       "title": "Execution"
      },
+     "executorRoles": {
+      "items": {
+       "maxLength": 63,
+       "minLength": 2,
+       "pattern": "^[a-z0-9][a-z0-9-]*$",
+       "type": "string"
+      },
+      "maxItems": 20,
+      "title": "Executorroles",
+      "type": "array"
+     },
      "fieldSchema": {
       "additionalProperties": true,
       "title": "Fieldschema",

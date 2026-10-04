@@ -52,7 +52,7 @@ description: Написать тесты сценариев процесса (te
    журнал, миграции и раскладка) и держи список рядом.
 4. **Проверь форму тестов без стенда:**
    `pkg_check` с `path` пакета (или `package-sdk check --package <пакет>`). Ожидаемая
-   ошибка на этом шаге — «такого Process нет в пакете». Любая другая ошибка
+   ошибка на этом шаге — «no such Process in package …». Любая другая ошибка
    (схема теста, лишнее поле) — ошибка теста: исправь её.
 5. **Опиши каркас процесса** (`author-package`): `start`, `data`, одна стадия с
    первым шагом. Прогони `pkg_test` по пакету.
@@ -92,14 +92,26 @@ steps:
   - expect: {status: completed, outcome: refunded, noSideEffects: true}
 ```
 
-- `emit` — событие (`event`) или наблюдение (`observation`) с `payload`.
+- `emit` — событие (`event`) или наблюдение (`observation`) с `payload`; `by` —
+  автор события (`event.actorId`): principal теста или `agent:<key>` агента пакета.
+  Без `by` у события автора нет, и выражение с `event.actorId` падает — защищай его
+  `has(event.actorId)`. Пример: `- emit: {observation: request.submitted, by: carol,
+  payload: {id: R-1}}`, процесс пишет `submittedBy: string(event.actorId)`.
+  `task: <id шага>` у наблюдения привязывает его к последней задаче шага — так тест
+  процесса проверяет правило пакета с `target: task`; его решения сверяет
+  `expect.rules` (`rule`, `action`, `step`, `result`: `matched`, `not_matched`,
+  `skipped`, `failed`, `reason`).
 - `advance` — сдвиг виртуального времени (ISO 8601) или `until:<таймер>`.
 - `complete` — завершить шаг человека или агента (`output` проверяется по форме),
   `cancel: true` — отменить задачу.
-- `approve` — голос согласующего; `expectRefused` — ожидаемый отказ ядра.
-- `expect` — стадии, вехи, задачи, таймеры (`provisional` для предварительного
-  календаря), данные (путь → значение), события `process.*` с прошлого
-  `expect`, память (`recalled`, `remembered`), состояние сроков `sla` (id шага
+- `approve` — голос согласующего; `expectRefused` — ожидаемый отказ ядра. В тесте
+  типа задачи (`subject: taskType`) — тоже: гейт, адресованный роли (`role:<slug>`),
+  решает её держатель, а голос другого — `expectRefused: not_eligible`.
+- `expect` — стадии, вехи, задачи (у задачи — `step`, `status`, `assignee`, `due` и
+  `customFields`: сравниваются только названные поля, так проверяют предзаполнение шага
+  `human` — `tasks: [{step: review-request, customFields: {request: R-1}}]`), таймеры
+  (`provisional` для предварительного календаря), данные (путь → значение), события
+  `process.*` с прошлого `expect`, память (`recalled`, `remembered`), состояние сроков `sla` (id шага
   со сроком или `process` → `ok`/`warning`/`breached`/`paused`), статус, исход,
   ошибка, `noSideEffects: true`.
 - `mocks.recall` — ответ памяти шагу `recall` (`step` — id шага); `timeout:

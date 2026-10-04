@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15'",
@@ -289,8 +289,8 @@ wheels = [
 
 [[package]]
 name = "control-plane"
-version = "0.9.0"
-source = { editable = "../control-plane" }
+version = "0.10.0"
+source = { editable = "../../services/control-plane" }
 dependencies = [
     { name = "alembic" },
     { name = "anyio" },
@@ -319,7 +319,7 @@ requires-dist = [
     { name = "anyio", specifier = ">=4.4" },
     { name = "boto3", specifier = ">=1.35" },
     { name = "cel-expr-python", specifier = ">=0.1.3,<0.2" },
-    { name = "control-plane-client", editable = "../control-plane/client" },
+    { name = "control-plane-client", editable = "../../services/control-plane/client" },
     { name = "fastapi", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "httpx2", specifier = ">=2.12.0" },
@@ -356,7 +356,7 @@ dev = [
 [[package]]
 name = "control-plane-client"
 version = "0.9.0"
-source = { editable = "../control-plane/client" }
+source = { editable = "../../services/control-plane/client" }
 dependencies = [
     { name = "httpx" },
 ]
@@ -961,7 +961,7 @@ wheels = [
 
 [[package]]
 name = "package-sdk"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "jsonschema" },
@@ -1001,9 +1001,9 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "control-plane", marker = "extra == 'sandbox'", editable = "../control-plane" },
-    { name = "control-plane-client", marker = "extra == 'connector'", editable = "../control-plane/client" },
-    { name = "control-plane-client", marker = "extra == 'mcp'", editable = "../control-plane/client" },
+    { name = "control-plane", marker = "extra == 'sandbox'", editable = "../../services/control-plane" },
+    { name = "control-plane-client", marker = "extra == 'connector'", editable = "../../services/control-plane/client" },
+    { name = "control-plane-client", marker = "extra == 'mcp'", editable = "../../services/control-plane/client" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "package-sdk", extras = ["sandbox", "connector", "skills", "mcp"], marker = "extra == 'all'" },
@@ -1686,6 +1686,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "httpx", marker = "extra == 'connections'", specifier = ">=0.27" },
     { name = "jsonschema", specifier = ">=4.23" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=2.0.0" },
     { name = "platform-auth-sdk", marker = "extra == 'http'", editable = "../platform-auth-sdk" },
@@ -1693,12 +1694,12 @@ requires-dist = [
     { name = "platform-llm", marker = "extra == 'llm'", editable = "../platform-llm" },
     { name = "pydantic", specifier = ">=2.8" },
     { name = "pyyaml", specifier = ">=6.0" },
-    { name = "skill-sdk", extras = ["http", "mcp", "llm"], marker = "extra == 'all'" },
+    { name = "skill-sdk", extras = ["http", "mcp", "llm", "connections"], marker = "extra == 'all'" },
     { name = "starlette", marker = "extra == 'http'", specifier = ">=0.37" },
     { name = "uvicorn", marker = "extra == 'http'", specifier = ">=0.30" },
     { name = "uvicorn", marker = "extra == 'mcp'", specifier = ">=0.30" },
 ]
-provides-extras = ["http", "mcp", "llm", "all"]
+provides-extras = ["http", "mcp", "llm", "connections", "all"]
 
 [package.metadata.requires-dev]
 dev = [

@@ -1,0 +1,18 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# An escalated claim above the refund threshold of the settings is a task.
+apiVersion: taimen.ai/v1
+kind: WorkRule
+key: claim-escalated
+spec:
+  description: An escalated claim above the refund threshold needs a decision
+  trigger: {kind: observation, type: claim.escalated}
+  condition:
+    and:
+      - {gt: [{var: payload.amount}, {var: settings.refundThreshold}]}
+      - {eq: [{var: settings.escalate}, true]}
+  action:
+    kind: ensure_work
+    taskType: claim-decision
+    dedupKeyTemplate: "claim-escalated:{{payload.ticketId}}"
+    fields:
+      title: "Decide on the claim {{payload.ticketId}} ({{settings.channel}})"

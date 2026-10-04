@@ -27,8 +27,12 @@ def test_every_schema_is_valid_draft_2020_12(name: str) -> None:
 
 
 def test_one_id_base_for_relative_refs() -> None:
-    bases = {schema.load(n)["$id"].rsplit("/", 1)[0] for n in NAMES}
+    # view.schema.json — побайтная копия схемы ядра (CP-ADR-0080): без $id и без ссылок
+    # в другие файлы
+    bases = {schema.load(n)["$id"].rsplit("/", 1)[0] for n in NAMES if n != schema.VIEW}
     assert len(bases) == 1
+    assert "$id" not in schema.load(schema.VIEW)
+    assert "schemas/v1" not in json.dumps(schema.load(schema.VIEW))
 
 
 @pytest.mark.parametrize(
@@ -179,7 +183,7 @@ def test_the_check_counts_the_content_in_utf8_bytes() -> None:
     )
     assert schema.errors(schema.TEST, test) == []
     (error,) = _given_content_errors(test)
-    assert error.startswith("given.artifacts[1].content: 1048578 байт")
+    assert error.startswith("given.artifacts[1].content: 1048578 bytes")
 
 
 # Описания и заголовки схем редактор показывает автору пакета как есть (по $schema): ссылки
@@ -201,7 +205,8 @@ def _texts(node: Any, path: str) -> list[tuple[str, str]]:
     return found
 
 
-@pytest.mark.parametrize("name", NAMES)
+# view.schema.json — побайтная копия схемы ядра: её описания правит ядро, не SDK.
+@pytest.mark.parametrize("name", [n for n in NAMES if n != schema.VIEW])
 def test_descriptions_carry_no_development_references(name: str) -> None:
     leaked = [
         f"{where}: {match.group(0)}"

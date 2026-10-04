@@ -198,7 +198,7 @@ def test_new_process_becomes_a_file_that_passes_check(tmp_path: Path) -> None:
     spec["displayName"] = "Копия оплаты"
     core = FakeCore()
     core.publish("Process", "invoice-copy", spec)
-    with pytest.raises(PackageError, match="задайте их переменные"):
+    with pytest.raises(PackageError, match="set their variables"):
         _export(core, package_dir, "Process", "invoice-copy", env={})  # без значений установки
     assert not (package_dir / "processes" / "invoice-copy.yaml").exists()
     result = _export(core, package_dir, "Process", "invoice-copy")
@@ -228,12 +228,12 @@ def test_calendar_edit_roundtrip(tmp_path: Path) -> None:
 
 
 def test_unknown_object_is_a_clear_error() -> None:
-    with pytest.raises(PackageError, match="Process/missing не найден"):
+    with pytest.raises(PackageError, match="Process/missing not found"):
         export.fetch(FakeCore(), {}, "Process", "missing", None)
 
 
 def test_other_kinds_go_their_own_way(tmp_path: Path) -> None:
-    with pytest.raises(PackageError, match="только Process и Calendar"):
+    with pytest.raises(PackageError, match="only Process and Calendar"):
         export.export_object(_copy(tmp_path, "notify"), "TaskType", "x", {"spec": {}})
 
 
@@ -256,7 +256,7 @@ def test_console_fields_are_marked_from_the_core_plan(
         == 0
     )  # type: ignore[arg-type]
     out = capsys.readouterr().out
-    assert "обновлён" in out and "правлено в консоли: /spec/displayName" in out
+    assert "updated" in out and "edited in the console: /spec/displayName" in out
     # план строился по пакету до выгрузки: файлы пакета, а не стенда
     (plan,) = core.plans
     files = {f["path"] for f in plan["package"]["files"]}
@@ -272,7 +272,7 @@ def test_export_works_when_the_plan_cannot_be_built(
     core.plan_error = RuntimeError("POST /api/v1/packages:plan: HTTP 403: forbidden")
     assert commands._export_planned(_args(package_dir, "Calendar", "ru"), core, {}, {}) == 0  # type: ignore[arg-type]
     out = capsys.readouterr().out
-    assert "план ядра не построен" in out and "без изменений" in out
+    assert "the core plan was not built" in out and "unchanged" in out
 
 
 def test_expand_data_ref_is_what_the_core_would_store(tmp_path: Path) -> None:
@@ -352,8 +352,8 @@ def test_replaced_data_ref_is_a_warning(tmp_path: Path) -> None:
     core = FakeCore()
     core.publish("Process", "tender", spec)
     result = _export(core, package_dir, "Process", "tender")
-    assert result.warnings and "ссылка заменена" in result.warnings[0]
-    assert "предупреждение: data:" in result.line()
+    assert result.warnings and "the reference was replaced" in result.warnings[0]
+    assert "warning: data:" in result.line()
 
 
 def test_substitutions_are_reported(tmp_path: Path) -> None:
@@ -364,7 +364,7 @@ def test_substitutions_are_reported(tmp_path: Path) -> None:
     core.publish("Process", "invoice-payment", spec)
     result = _export(core, package_dir, "Process", "invoice-payment")
     assert result.substituted == ["ACCOUNTING_ROLE_ID"]
-    assert "значения стенда → ${ACCOUNTING_ROLE_ID}" in result.line()
+    assert "stand values → ${ACCOUNTING_ROLE_ID}" in result.line()
 
 
 def _calendar_export(tmp_path: Path, mutate: Any) -> tuple[str, str, dict[str, Any]]:

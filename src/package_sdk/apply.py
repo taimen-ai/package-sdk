@@ -25,18 +25,22 @@ except ImportError:  # pragma: no cover - окружение без PyYAML
     yaml = None
     yaml12 = None  # type: ignore[assignment]
 
-from package_sdk.check import _domain, normalize_rule
+from package_sdk import schema as schema_module
+from package_sdk.check import _domain, normalize_rule, rule_fields_unknown_to_core
 from package_sdk.manifest import missing_variable, package_env
 from package_sdk.model import (
     API,
     API_VERSION,
     CATALOG_KINDS,
+    CONNECTION_TYPE_ETAG,
+    CONNECTION_TYPE_FIELDS,
     DEFAULT_EXECUTION_INPUTS,
     IDENTITY,
     NOTIFY_AUDIENCE,
     NOTIFY_URL_ENV,
     PLAN_KINDS,
     RULE_MUTABLE,
+    SCREEN_KINDS,
     SERVER_DEFAULTED,
     SKILL_IMMUTABLE,
     SKILL_MUTABLE,
@@ -67,6 +71,7 @@ RECORDED_KINDS_FALLBACK = (
     "WorkspaceType",
     "Role",
     "Capability",
+    "ConnectionType",
     "Skill",
     "WorkRule",
     "Agent",
@@ -134,13 +139,13 @@ class _SameOriginRedirects(urllib.request.HTTPRedirectHandler):
         refusal = None
         if _origin(newurl) != _origin(req.full_url):
             refusal = (
-                f"{method} {path}: HTTP {code}: сервер перенаправляет на "
-                f"{_shown_origin(newurl)} — укажите его в --server"
+                f"{method} {path}: HTTP {code}: the server redirects to "
+                f"{_shown_origin(newurl)} — pass it in --server"
             )
         elif method not in ("GET", "HEAD"):
             refusal = (
-                f"{method} {path}: HTTP {code}: сервер перенаправляет на {newurl} — тело "
-                "запроса при редиректе теряется, укажите точный адрес в --server"
+                f"{method} {path}: HTTP {code}: the server redirects to {newurl} — the request "
+                "body is lost on redirect, pass the exact address in --server"
             )
         if refusal is not None:
             fp.close()
@@ -241,6 +246,98 @@ def _differences(kind: str, desired: dict[str, Any], actual: dict[str, Any]) -> 
     return changed
 
 
+def _without_nulls(value: Any) -> Any:
+    """Документ без ключей со значением null на любой глубине: null в ответе ядра — поле не
+    задано (у вложенных oauth2.accountParam, accountField.description так же, как у верхних)."""
+    if isinstance(value, dict):
+        return {k: _without_nulls(v) for k, v in value.items() if v is not None}
+    if isinstance(value, list):
+        return [_without_nulls(item) for item in value]
+    return value
+
+
+def _schema_node(definitions: dict[str, Any], node: Any) -> dict[str, Any]:
+    """Узел схемы формата с раскрытой локальной ссылкой ``#/$defs/…``; {} — узла нет."""
+    seen = 0
+    while isinstance(node, dict) and isinstance(node.get("$ref"), str) and seen < 20:
+        name = node["$ref"].removeprefix("#/$defs/")
+        node = definitions.get(name) if name != node["$ref"] else None
+        seen += 1
+    return node if isinstance(node, dict) else {}
+
+
+def without_empty(value: Any, node: Any, definitions: dict[str, Any]) -> Any:
+    """Документ без пустых объектов и массивов у членов, объявленных в ``properties`` схемы
+    формата и без ``default``: пустой член — то же, что отсутствующий. В узлы без
+    ``properties`` (объект) и без ``items`` (массив) не спускается: их содержимое — данные
+    автора (``inputs``, ``condition``), ``{include: []}`` и ``{exclude: []}`` у ядра разные.
+    Необъявленный член остаётся как есть. Нейтральная форма сравнения файла с ответом ядра
+    без кода ядра рядом: умолчаний ядра SDK не выдумывает (TASK-001389)."""
+    node = _schema_node(definitions, node)
+    if isinstance(value, list):
+        if "items" not in node:
+            return value
+        return [without_empty(item, node["items"], definitions) for item in value]
+    properties = node.get("properties")
+    if not isinstance(value, dict) or not isinstance(properties, dict):
+        return value
+    result = {}
+    for name, member in value.items():
+        if name not in properties:
+            result[name] = member
+            continue
+        sub = _schema_node(definitions, properties[name])
+        member = without_empty(member, sub, definitions)
+        if member in ({}, []) and "default" not in sub:
+            continue
+        result[name] = member
+    return result
+
+
+def _rule_form(document: dict[str, Any]) -> dict[str, Any]:
+    """Изменяемые поля правила в форме сравнения: без пустых членов без ``default`` в схеме."""
+    definitions = schema_module.load(schema_module.OBJECT)["$defs"]
+    fields = {name: document.get(name) for name in RULE_MUTABLE}
+    form: dict[str, Any] = without_empty(fields, definitions["workRuleSpec"], definitions)
+    return form
+
+
+def _rule_differences(
+    raw: dict[str, Any], wanted: dict[str, Any], current: dict[str, Any], domain: Any
+) -> list[str]:
+    """Поля правила, которые в файле и в ядре отличаются; обе стороны — в одной форме.
+
+    ``raw`` — изменяемые поля файла как есть, ``wanted`` — они же после normalize_rule_spec
+    ядра рядом (``domain``; None — ядра рядом нет, ``wanted`` — это ``raw``). С ядром рядом
+    через ту же функцию проходит и ответ стенда; не понимает его ядро рядом (стенд новее) —
+    обе стороны сравниваются как есть. Поверх — без пустых членов без умолчания в схеме:
+    значение по умолчанию, которое ядро допишет в каноническую форму, не даёт ложной разницы
+    (TASK-001389)."""
+    desired, stored = wanted, current
+    if domain is not None:
+        try:
+            stored = normalize_rule(
+                {k: v for k, v in current.items() if k in RULE_MUTABLE and v is not None}, domain
+            )
+        except (domain.DomainError, PackageError):
+            desired, stored = raw, current
+    desired, stored = _rule_form(desired), _rule_form(stored)
+    return [
+        name for name in RULE_MUTABLE if canonical(desired.get(name)) != canonical(stored.get(name))
+    ]
+
+
+def _connection_type_differences(desired: dict[str, Any], actual: Any) -> list[str]:
+    """Поля спецификации версии типа подключения, которые в файле и в ядре отличаются;
+    null в ответе ядра — поле не задано (CP-ADR-0079 §17)."""
+    stored = _without_nulls(actual or {})
+    return sorted(
+        name
+        for name in set(desired) | set(stored)
+        if canonical(desired.get(name)) != canonical(stored.get(name))
+    )
+
+
 # --- связь объектов с пакетом (CP-ADR-0074 §11, амендмент TASK-000904) ----------
 
 
@@ -265,7 +362,7 @@ def recorded_kinds_from_openapi(document: Any) -> tuple[str, ...] | None:
     """Виды, которые ядро принимает в POST /packages:record: перечень objects[].kind тела
     запроса из OpenAPI ядра. None — маршрута в документе нет (ядро старше связей с пакетом)."""
     if not isinstance(document, dict):
-        raise PackageError("OpenAPI ядра — не объект JSON")
+        raise PackageError("the core's OpenAPI is not a JSON object")
     operation = ((document.get("paths") or {}).get(API + PACKAGES_RECORD) or {}).get("post")
     if operation is None:
         return None
@@ -285,7 +382,7 @@ def recorded_kinds_from_openapi(document: Any) -> tuple[str, ...] | None:
             kinds.append(variant["const"])
     if not kinds:
         raise PackageError(
-            f"OpenAPI ядра: у POST {API}{PACKAGES_RECORD} нет перечня objects[].kind"
+            f"the core's OpenAPI: POST {API}{PACKAGES_RECORD} has no objects[].kind enum"
         )
     return tuple(dict.fromkeys(kinds))
 
@@ -366,8 +463,8 @@ class Applier:
     def _notify_call(self, method: str, path: str, body: Any = None) -> dict:
         if self.notify is None:
             raise PackageError(
-                f"сервис уведомлений не задан — нужен {NOTIFY_URL_ENV} и токен audience "
-                f"{NOTIFY_AUDIENCE}"
+                f"notification service is not set — {NOTIFY_URL_ENV} and a token with audience "
+                f"{NOTIFY_AUDIENCE} are required"
             )
         return self.notify.call(method, API + path, body, self.notify_headers)
 
@@ -381,7 +478,7 @@ class Applier:
         return self.http.call(method, API + path, body, headers)
 
     def _say(self, obj_ref: str, message: str) -> None:
-        self.log(f"   {obj_ref}: {'(план) ' if self.dry_run else ''}{message}")
+        self.log(f"   {obj_ref}: {'(plan) ' if self.dry_run else ''}{message}")
 
     def _change(
         self,
@@ -422,9 +519,15 @@ class Applier:
         for kind in CATALOG_KINDS:
             if kind in SECTION_KINDS:
                 continue
-            for obj in installation.objects:
-                if obj.kind == kind and kind not in owned.get(obj.package, frozenset()):
-                    getattr(self, f"_apply_{kind}")(obj, self._spec(installation, obj))
+            of_kind = [
+                obj
+                for obj in installation.objects
+                if obj.kind == kind and kind not in owned.get(obj.package, frozenset())
+            ]
+            if of_kind:
+                self.log(f"   [{kind}]")  # раздел вида: установка читается по видам каталога
+            for obj in of_kind:
+                getattr(self, f"_apply_{kind}")(obj, self._spec(installation, obj))
         if recorded is not None:
             for package in installation.packages:
                 self._record(package, recorded, owned.get(package.key, frozenset()))
@@ -436,8 +539,8 @@ class Applier:
             return
         if self.notify is None:
             raise PackageError(
-                f"в установке есть NotificationRule, а сервис уведомлений не задан — нужен "
-                f"{NOTIFY_URL_ENV} и токен audience {NOTIFY_AUDIENCE}"
+                f"the installation has a NotificationRule, but the notification service is not set — "
+                f"{NOTIFY_URL_ENV} and a token with audience {NOTIFY_AUDIENCE} are required"
             )
         self._validate_notification_rules(installation, rules)
         for obj in rules:
@@ -450,8 +553,8 @@ class Applier:
                 continue
             if kind == "NotificationRule" and self.notify is None:
                 raise PackageError(
-                    f"retire NotificationRule: сервис уведомлений не задан — нужен "
-                    f"{NOTIFY_URL_ENV} и токен audience {NOTIFY_AUDIENCE}"
+                    f"retire NotificationRule: the notification service is not set — "
+                    f"{NOTIFY_URL_ENV} and a token with audience {NOTIFY_AUDIENCE} are required"
                 )
             for key in keys:
                 self._retire(kind, key)
@@ -478,14 +581,15 @@ class Applier:
             kinds = recorded_kinds_from_openapi(document)
         except (RuntimeError, OSError, ValueError, PackageError) as error:
             self.log(
-                f"   ! OpenAPI ядра не прочитан ({error}) — виды для {PACKAGES_RECORD}: "
+                f"   ! the core's OpenAPI was not read ({error}) — kinds for {PACKAGES_RECORD}: "
                 f"{', '.join(RECORDED_KINDS_FALLBACK)}"
             )
             return RECORDED_KINDS_FALLBACK
         if kinds is None:
             raise PackageError(
-                f"ядро не записывает связь объектов с пакетом (нет POST {API}{PACKAGES_RECORD}) — "
-                "нужен control-plane не старше 1a4b4c2 (CP-ADR-0074, амендмент TASK-000904)"
+                f"the core does not record the objects' link to the package (no POST "
+                f"{API}{PACKAGES_RECORD}) — control-plane at 1a4b4c2 or newer is required "
+                "(CP-ADR-0074, amendment TASK-000904)"
             )
         return kinds
 
@@ -500,46 +604,47 @@ class Applier:
             {o.kind for o in package.objects}
             - set(kinds)
             - set(PLAN_KINDS)
+            - set(SCREEN_KINDS)
             - set(exclude)
             - {"NotificationRule", "KnowledgePack"}
         )
         if others:
             self.log(
-                f"   ! {where}: {', '.join(others)} ядро через {PACKAGES_RECORD} не связывает — "
-                "связь с пакетом у них не записана"
+                f"   ! {where}: the core does not link {', '.join(others)} via {PACKAGES_RECORD} — "
+                "their link to the package is not recorded"
             )
         objects = record_objects(package, kinds, exclude)
         if not objects:
-            self._say(where, f"связывать через {PACKAGES_RECORD} нечего")
+            self._say(where, f"nothing to link via {PACKAGES_RECORD}")
             return
         body = {"package": ref, "installHash": install_hash(package.path), "objects": objects}
         try:
             response = self._write("POST", PACKAGES_RECORD, body)
         except RuntimeError as error:
             raise PackageError(
-                f"пакет {where}: объекты применены, но ядро не записало их связь с пакетом "
-                f"(POST {API}{PACKAGES_RECORD}): {error}. Установка остановлена; повторный apply "
-                "идемпотентен"
+                f"package {where}: objects applied, but the core did not record their link to the "
+                f"package (POST {API}{PACKAGES_RECORD}): {error}. Installation stopped; a repeated "
+                "apply is idempotent"
             ) from error
         count = len((response or {}).get("recorded") or objects)
-        self._say(where, f"связь с пакетом записана: объектов {count}, {body['installHash'][:19]}…")
+        self._say(where, f"package link recorded: objects {count}, {body['installHash'][:19]}…")
 
     # KnowledgePack — онтология памяти (TAI-ADR-0062 п.5): версия неизменяема
     def _apply_KnowledgePack(self, obj: Obj, spec: dict[str, Any]) -> None:
         version = spec.get("version")
         if self.dry_run:
-            self._say(obj.ref, f"версия {version} будет зарегистрирована, если её ещё нет")
+            self._say(obj.ref, f"version {version} will be registered unless it exists")
             return
         try:
             self._write("POST", "/knowledge/packs", spec)
         except HttpError as error:
             if error.status == 409:
                 raise PackageError(
-                    f"{obj.ref}: версия {version} уже зарегистрирована с другим содержимым — "
-                    "версия онтологии неизменяема, поднимите version"
+                    f"{obj.ref}: version {version} is already registered with different content — "
+                    "an ontology version is immutable, bump version"
                 ) from error
             raise
-        self._say(obj.ref, f"версия {version} зарегистрирована (или уже была такой)")
+        self._say(obj.ref, f"version {version} registered (or was already the same)")
         self.result[obj.ref] = {"version": version}
 
     def _enable_knowledge(self, target: dict[str, Any]) -> None:
@@ -547,16 +652,19 @@ class Applier:
         where = f"workspace {target['workspace']}"
         packs = list(target["packs"])
         strict = bool(target.get("strict"))
-        mode = ", строгий режим" if strict else ""
+        mode = ", strict mode" if strict else ""
         if self.dry_run:
-            self._say(where, f"онтологии → {', '.join(packs) or '—'}{mode} (набор заменит текущий)")
+            self._say(
+                where,
+                f"ontologies → {', '.join(packs) or '—'}{mode} (the set replaces the current one)",
+            )
             return
         self._write(
             "PUT",
             f"/workspaces/{target['workspace']}/knowledge-packs",
             {"packs": packs, "strict": strict},
         )
-        self._say(where, f"онтологии: {', '.join(packs) or '—'}{mode}")
+        self._say(where, f"ontologies: {', '.join(packs) or '—'}{mode}")
         self.result[f"knowledge/{target['workspace']}"] = {"packs": packs, "strict": strict}
 
     # NotificationRule — в сервисе уведомлений (ADR-0005 notification-service §5–7)
@@ -571,7 +679,7 @@ class Applier:
                 )
             except RuntimeError as error:
                 raise PackageError(
-                    f"{obj.ref}: сервис уведомлений не принимает правило — {error}"
+                    f"{obj.ref}: the notification service rejects the rule — {error}"
                 ) from error
 
     def _apply_NotificationRule(self, obj: Obj, spec: dict[str, Any]) -> None:
@@ -579,24 +687,24 @@ class Applier:
         changed; без изменений ничего не пишется."""
         current = next((r for r in self._notify_list(key=obj.key) if r["key"] == obj.key), None)
         if not self._notify_checks[obj.key].get("changed"):
-            self._say(obj.ref, f"v{current['version'] if current else '?'} без изменений")
+            self._say(obj.ref, f"v{current['version'] if current else '?'} unchanged")
             if current is not None:
                 self.result[obj.ref] = {"version": current["version"]}
             return
-        reason = "нет в сервисе" if current is None else "изменилась спецификация"
+        reason = "not in the service" if current is None else "spec changed"
         self._change(
             obj.kind,
             obj.key,
             "create" if current is None else "version",
-            f"новая версия ({reason})",
+            f"new version ({reason})",
             package=obj.package,
             expected={"version": current["version"] if current else None},
         )
         if self.dry_run:
-            self._say(obj.ref, f"новая версия ({reason})")
+            self._say(obj.ref, f"new version ({reason})")
             return
         rule = self._notify_call("POST", "/notification-rules", {"key": obj.key, "spec": spec})
-        self._say(obj.ref, f"опубликована v{rule['version']} ({reason})")
+        self._say(obj.ref, f"published v{rule['version']} ({reason})")
         self.result[obj.ref] = {"version": rule["version"]}
 
     # версии неизменяемы: TaskType и ProjectTemplate
@@ -611,29 +719,29 @@ class Applier:
         expected = {"active": [item["version"] for item in active]}
         if latest is not None and not _differences(obj.kind, desired, latest):
             keep = latest
-            self._say(obj.ref, f"v{latest['version']} без изменений")
+            self._say(obj.ref, f"v{latest['version']} unchanged")
         else:
             changed = _differences(obj.kind, desired, latest) if latest is not None else []
-            reason = "нет в tenant" if latest is None else "изменились " + ", ".join(changed)
+            reason = "not in tenant" if latest is None else "changed " + ", ".join(changed)
             self._change(
                 obj.kind,
                 obj.key,
                 "create" if latest is None else "version",
-                f"новая версия ({reason})",
+                f"new version ({reason})",
                 package=obj.package,
                 fields=changed,
                 expected=expected,
             )
             if self.dry_run:
-                self._say(obj.ref, f"новая версия ({reason})")
+                self._say(obj.ref, f"new version ({reason})")
                 keep = None
             else:
                 keep = self._write("POST", f"/{collection}", {"key": obj.key, **spec})
                 if obj.kind == "TaskType" and spec.get("execution") and not keep.get("execution"):
                     raise PackageError(
-                        f"{obj.ref}: control-plane не сохранил execution — релиз ядра старше CP-ADR-0056 §3"
+                        f"{obj.ref}: control-plane did not save execution — the core release predates CP-ADR-0056 §3"
                     )
-                self._say(obj.ref, f"опубликована v{keep['version']} ({reason})")
+                self._say(obj.ref, f"published v{keep['version']} ({reason})")
         for item in active:
             if keep is None or item["id"] != keep["id"]:
                 self._change(
@@ -660,23 +768,23 @@ class Applier:
         changed = _differences(obj.kind, desired, latest) if latest is not None else []
         if latest is not None and not changed:
             keep = latest
-            self._say(obj.ref, f"v{latest['version']} без изменений")
+            self._say(obj.ref, f"v{latest['version']} unchanged")
         else:
-            reason = "нет в tenant" if latest is None else "изменились " + ", ".join(changed)
+            reason = "not in tenant" if latest is None else "changed " + ", ".join(changed)
             self._change(
                 obj.kind,
                 obj.key,
                 "create" if latest is None else "version",
-                f"новая версия ({reason})",
+                f"new version ({reason})",
                 package=obj.package,
                 fields=changed,
                 expected={"latest": latest["version"] if latest is not None else None},
             )
             if self.dry_run:
-                self._say(obj.ref, f"новая версия ({reason})")
+                self._say(obj.ref, f"new version ({reason})")
                 return
             keep = self._write("POST", "/artifact-types", {"key": obj.key, **desired})
-            self._say(obj.ref, f"опубликована v{keep['version']} ({reason})")
+            self._say(obj.ref, f"published v{keep['version']} ({reason})")
         self.result[obj.ref] = {"id": keep["id"], "version": keep["version"]}
 
     def _apply_Agent(self, obj: Obj, spec: dict[str, Any]) -> None:
@@ -689,15 +797,15 @@ class Applier:
         check = self._write("POST", "/agents:validate", body)
         current = check.get("currentRevision")
         if not check.get("wouldCreateRevision") and not check.get("wouldChangeState"):
-            self._say(obj.ref, f"ревизия {current} без изменений")
+            self._say(obj.ref, f"revision {current} unchanged")
             self.result[obj.ref] = {"revision": current}
             return
         reason = (
-            "нет в tenant"
+            "not in tenant"
             if current is None
-            else "новая ревизия"
+            else "new revision"
             if check.get("wouldCreateRevision")
-            else "меняется состояние"
+            else "state changes"
         )
         self._change(
             obj.kind,
@@ -716,10 +824,10 @@ class Applier:
             self._say(obj.ref, reason)
             return
         agent = self._write("POST", "/agents", body)
-        what = f"ревизия {agent['currentRevision']}" + (
-            f" ({reason})" if reason != "новая ревизия" else ""
+        what = f"revision {agent['currentRevision']}" + (
+            f" ({reason})" if reason != "new revision" else ""
         )
-        self._say(obj.ref, f"опубликована {what}, {agent['state']} × {agent['replicas']}")
+        self._say(obj.ref, f"published {what}, {agent['state']} × {agent['replicas']}")
         self.result[obj.ref] = {"id": agent["id"], "revision": agent["currentRevision"]}
 
     def _apply_TaskType(self, obj: Obj, spec: dict[str, Any]) -> None:
@@ -735,23 +843,23 @@ class Applier:
                 None,
             )
             if current is None:
-                self._say(f"{kind}/{key}", "нет в сервисе уведомлений")
+                self._say(f"{kind}/{key}", "not in the notification service")
             elif current.get("state") == "retired":
-                self._say(f"{kind}/{key}", "уже выведено из оборота")
+                self._say(f"{kind}/{key}", "already retired")
             else:
                 self._change(
                     kind,
                     key,
                     "retire",
-                    "уведомлений по правилу больше нет, отправленные остаются",
+                    "the rule sends no more notifications, sent ones remain",
                     expected={"version": current["version"]},
                 )
                 if not self.dry_run:
                     self._notify_call("POST", f"/notification-rules/{key}:retire")
                 self._say(
                     f"{kind}/{key}",
-                    f"v{current['version']} → retired: уведомлений по нему больше нет, "
-                    "отправленные остаются",
+                    f"v{current['version']} → retired: it sends no more notifications, "
+                    "sent ones remain",
                 )
             return
         if kind == "Agent":
@@ -760,35 +868,67 @@ class Applier:
             except Exception as error:
                 if "404" not in str(error):
                     raise
-                self._say(f"{kind}/{key}", "нет в tenant")
+                self._say(f"{kind}/{key}", "not in tenant")
                 return
             if agent.get("status") == "retired":
-                self._say(f"{kind}/{key}", "уже выведен из оборота")
+                self._say(f"{kind}/{key}", "already retired")
                 return
             self._change(
                 kind,
                 key,
                 "retire",
-                "исполнитель остановится, credential будет отозван",
+                "the executor will stop, the credential will be revoked",
                 expected={"revision": agent.get("currentRevision")},
             )
             if not self.dry_run:
                 self._write(
-                    "POST", f"/agents/{key}:retire", {"reason": "retire в установке пакетов"}
+                    "POST", f"/agents/{key}:retire", {"reason": "retired by package installation"}
                 )
-            self._say(f"{kind}/{key}", "→ retired: исполнитель остановлен, credential отозван")
+            self._say(f"{kind}/{key}", "→ retired: executor stopped, credential revoked")
+            return
+        if kind == "ConnectionType":
+            # новых подключений по типу нет, существующие работают на своей версии (CP-ADR-0079 §2)
+            active = [
+                t
+                for t in self._list("/connection-types", key=key, status="active")
+                if t.get("key") == key
+            ]
+            if not active:
+                self._say(f"{kind}/{key}", "already retired")
+            for item in sorted(active, key=lambda i: i["version"]):
+                self._change(
+                    kind,
+                    key,
+                    "deprecate",
+                    f"v{item['version']} → deprecated (retire): no new connections, "
+                    "existing ones keep working",
+                    expected={"rowVersion": item.get("rowVersion"), "status": "active"},
+                    version=item["version"],
+                )
+                if not self.dry_run:
+                    self._write(
+                        "PATCH",
+                        f"/connection-types/{key}@{item['version']}",
+                        {"status": "deprecated"},
+                        {"If-Match": CONNECTION_TYPE_ETAG.format(item["rowVersion"])},
+                    )
+                self._say(
+                    f"{kind}/{key}",
+                    f"v{item['version']} → deprecated (retire): no new connections, "
+                    "existing ones keep working",
+                )
             return
         if kind == "WorkRule":
             # DELETE архивирует: правило больше не оценивается, заведённая им работа остаётся.
             live = [r for r in self._list("/rules", key=key) if r.get("status") != "archived"]
             if not live:
-                self._say(f"{kind}/{key}", "уже в архиве")
+                self._say(f"{kind}/{key}", "already archived")
             for rule in live:
                 self._change(
                     kind,
                     key,
                     "retire",
-                    "правило уйдёт в архив, заведённая им работа останется",
+                    "the rule will be archived, the work it created remains",
                     expected={"version": rule.get("version")},
                 )
                 if not self.dry_run:
@@ -798,7 +938,7 @@ class Applier:
         collection = {"TaskType": "task-types", "ProjectTemplate": "project-templates"}[kind]
         active = self._list(f"/{collection}", key=key, status="active")
         if not active:
-            self._say(f"{kind}/{key}", "уже выведен из оборота")
+            self._say(f"{kind}/{key}", "already retired")
         for item in sorted(active, key=lambda i: i["version"]):
             self._change(
                 kind,
@@ -825,12 +965,12 @@ class Applier:
         desired = _desired(obj.kind, spec)
         identity = IDENTITY[obj.kind]
         if current is None:
-            self._change(obj.kind, obj.key, "create", "будет создан", package=obj.package)
+            self._change(obj.kind, obj.key, "create", "will be created", package=obj.package)
             if self.dry_run:
-                self._say(obj.ref, "будет создан")
+                self._say(obj.ref, "will be created")
                 return
             current = self._write("POST", create_path, {identity: obj.key, **desired})
-            self._say(obj.ref, "создан")
+            self._say(obj.ref, "created")
         else:
             changed = _differences(obj.kind, desired, current)
             if changed:
@@ -838,15 +978,15 @@ class Applier:
                     obj.kind,
                     obj.key,
                     "patch",
-                    "изменятся " + ", ".join(changed),
+                    "will change " + ", ".join(changed),
                     package=obj.package,
                     fields=changed,
                     expected={"version": current.get("version")},
                 )
             if not changed:
-                self._say(obj.ref, "без изменений")
+                self._say(obj.ref, "unchanged")
             elif self.dry_run:
-                self._say(obj.ref, "изменятся " + ", ".join(changed))
+                self._say(obj.ref, "will change " + ", ".join(changed))
             else:
                 current = self._write(
                     "PATCH",
@@ -854,14 +994,14 @@ class Applier:
                     {name: desired[name] for name in changed},
                     {"If-Match": etag(current)},
                 )
-                self._say(obj.ref, "обновлены " + ", ".join(changed))
+                self._say(obj.ref, "updated " + ", ".join(changed))
         self.result[obj.ref] = {"id": current["id"]}
 
     def _apply_WorkspaceType(self, obj: Obj, spec: dict[str, Any]) -> None:
         current = next((t for t in self._list("/workspace-types") if t["key"] == obj.key), None)
         if current is not None and current.get("status") != "active":
             raise PackageError(
-                f"{obj.ref}: тип workspace в статусе {current.get('status')} — вернуть его пакет не может"
+                f"{obj.ref}: workspace type in status {current.get('status')} — the package cannot restore it"
             )
         self._apply_mutable(
             obj,
@@ -896,21 +1036,92 @@ class Applier:
         current = next((c for c in self._list("/capabilities") if c["name"] == obj.key), None)
         description = spec.get("description", "")
         if current is None:
-            self._change(obj.kind, obj.key, "create", "будет создана", package=obj.package)
+            self._change(obj.kind, obj.key, "create", "will be created", package=obj.package)
             if self.dry_run:
-                self._say(obj.ref, "будет создана")
+                self._say(obj.ref, "will be created")
                 return
             current = self._write(
                 "POST", "/capabilities", {"name": obj.key, "description": description}
             )
-            self._say(obj.ref, "создана")
+            self._say(obj.ref, "created")
         elif current.get("description", "") != description:
             self._say(
-                obj.ref, "!! описание в tenant отличается, а API его не меняет — оставлено как есть"
+                obj.ref,
+                "!! the description in tenant differs, and the API cannot change it — left as is",
             )
         else:
-            self._say(obj.ref, "без изменений")
+            self._say(obj.ref, "unchanged")
         self.result[obj.ref] = {"id": current["id"]}
+
+    # ConnectionType: версия задана пакетом, содержимое версии неизменяемо (CP-ADR-0079 §2)
+    def _apply_ConnectionType(self, obj: Obj, spec: dict[str, Any]) -> None:
+        """Публикация по (key, version): совпадающее тело — без записи (ядро на повтор тоже
+        отвечает 200 без события), другое — ошибка до записи: поднимите spec.version. Прежние
+        версии остаются — подключения закреплены за своей. Версию, выведенную из оборота
+        (deprecated), пакет возвращает в active; отключённую администратором (disabled) — нет."""
+        version = spec["version"]
+        desired = {name: spec[name] for name in CONNECTION_TYPE_FIELDS if name in spec}
+        current = next(
+            (
+                t
+                for t in self._list("/connection-types", key=obj.key)
+                if t.get("version") == version
+            ),
+            None,
+        )
+        if current is None:
+            self._change(
+                obj.kind,
+                obj.key,
+                "create",
+                f"version {version} will be published (not in tenant)",
+                package=obj.package,
+                version=version,
+            )
+            if self.dry_run:
+                self._say(obj.ref, "will be published (not in tenant)")
+                return
+            current = self._write(
+                "POST", "/connection-types", {"key": obj.key, "version": version, "spec": desired}
+            )
+            self._say(obj.ref, "published (not in tenant)")
+            self.result[obj.ref] = {"id": current["id"], "version": current["version"]}
+            return
+        changed = _connection_type_differences(desired, current.get("spec"))
+        if changed:
+            raise PackageError(
+                f"{obj.ref}: the published version differs in {', '.join(changed)} — a connection "
+                "type version is immutable, bump spec.version"
+            )
+        status = current.get("status")
+        if status == "deprecated":
+            self._change(
+                obj.kind,
+                obj.key,
+                "patch",
+                "deprecated → active",
+                package=obj.package,
+                fields=["status"],
+                expected={"rowVersion": current.get("rowVersion"), "status": status},
+                version=version,
+            )
+            if not self.dry_run:
+                current = self._write(
+                    "PATCH",
+                    f"/connection-types/{obj.key}@{version}",
+                    {"status": "active"},
+                    {"If-Match": CONNECTION_TYPE_ETAG.format(current["rowVersion"])},
+                )
+            self._say(obj.ref, "deprecated → active")
+        elif status == "disabled":
+            self._say(
+                obj.ref,
+                "!! the version is disabled in tenant — the package does not enable it, "
+                "no new connections of it",
+            )
+        else:
+            self._say(obj.ref, "unchanged")
+        self.result[obj.ref] = {"id": current["id"], "version": current["version"]}
 
     # Skill: версия задана пакетом, контракт неизменяем
     def _apply_Skill(self, obj: Obj, spec: dict[str, Any]) -> None:
@@ -923,15 +1134,15 @@ class Applier:
                 obj.kind,
                 obj.key,
                 "create",
-                f"версия {version} будет зарегистрирована",
+                f"version {version} will be registered",
                 package=obj.package,
                 version=version,
             )
             if self.dry_run:
-                self._say(obj.ref, "будет зарегистрирован")
+                self._say(obj.ref, "will be registered")
                 return
             current = self._write("POST", "/skills", {"name": obj.key, **spec})
-            self._say(obj.ref, "зарегистрирован")
+            self._say(obj.ref, "registered")
             self.result[obj.ref] = {"id": current["id"]}
             return
         current = self._get(f"/skills/{current['id']}")
@@ -957,8 +1168,8 @@ class Applier:
                 immutable.append(name)
         if immutable:
             raise PackageError(
-                f"{obj.ref}: в опубликованной версии отличаются {', '.join(immutable)} — "
-                "контракт версии неизменяем, поднимите spec.version"
+                f"{obj.ref}: the published version differs in {', '.join(immutable)} — "
+                "a version contract is immutable, bump spec.version"
             )
         changes = {
             name: spec[name]
@@ -974,16 +1185,16 @@ class Applier:
                 obj.kind,
                 obj.key,
                 "patch",
-                "изменятся " + ", ".join(changes),
+                "will change " + ", ".join(changes),
                 package=obj.package,
                 fields=list(changes),
                 expected={"rowVersion": current.get("rowVersion")},
                 version=version,
             )
         if not changes:
-            self._say(obj.ref, "без изменений")
+            self._say(obj.ref, "unchanged")
         elif self.dry_run:
-            self._say(obj.ref, "изменятся " + ", ".join(changes))
+            self._say(obj.ref, "will change " + ", ".join(changes))
         else:
             current = self._write(
                 "PATCH",
@@ -991,7 +1202,7 @@ class Applier:
                 changes,
                 {"If-Match": f'"skill-{current["rowVersion"]}"'},
             )
-            self._say(obj.ref, "обновлены " + ", ".join(changes))
+            self._say(obj.ref, "updated " + ", ".join(changes))
         self.result[obj.ref] = {"id": current["id"]}
 
     # WorkRule: изменяемый, как WorkspaceType; статус — через :enable / :disable
@@ -1003,53 +1214,49 @@ class Applier:
         workspace = spec.get("workspaceId")
         if current is None:
             self._change(
-                obj.kind, obj.key, "create", f"будет создано ({status})", package=obj.package
+                obj.kind, obj.key, "create", f"will be created ({status})", package=obj.package
             )
             if self.dry_run:
-                self._say(obj.ref, f"будет создано ({status})")
+                self._say(obj.ref, f"will be created ({status})")
                 return
             payload = {"key": obj.key, **body, "status": status}
             if workspace:
                 payload["workspaceId"] = workspace
             current = self._rule_write(obj, "POST", "/rules", payload)
-            self._say(obj.ref, f"создано ({current['status']}, v{current['version']})")
+            self._say(obj.ref, f"created ({current['status']}, v{current['version']})")
             self.result[obj.ref] = {"id": current["id"], "version": current["version"]}
             return
         if (workspace or None) != current.get("workspaceId"):
             raise PackageError(
-                f"{obj.ref}: workspaceId правила неизменяем (в tenant {current.get('workspaceId')}, "
-                f"в пакете {workspace}) — выведите правило через retire и заведите заново"
+                f"{obj.ref}: a rule's workspaceId is immutable (in tenant {current.get('workspaceId')}, "
+                f"in the package {workspace}) — retire the rule and create it again"
             )
         domain = _domain()
-        wanted = (
-            normalize_rule(spec, domain)
-            if domain is not None
-            else {
-                "description": spec.get("description", ""),
-                "condition": spec.get("condition", True),
-                **body,
-            }
-        )
-        changed = [
-            name
-            for name in RULE_MUTABLE
-            if canonical(wanted.get(name)) != canonical(current.get(name))
-        ]
+        # ядро рядом без фильтра автора и target: task (CP-ADR-0063 Ж1, Ж6) правило с ними не
+        # нормализует — сравнение по файлу, как без ядра
+        raw = {
+            "description": spec.get("description", ""),
+            "condition": spec.get("condition", True),
+            **body,
+        }
+        normalized = domain is not None and not rule_fields_unknown_to_core(spec, domain)
+        wanted = normalize_rule(spec, domain) if normalized else raw
+        changed = _rule_differences(raw, wanted, current, domain if normalized else None)
         expected = {"version": current.get("version"), "status": current.get("status")}
         if changed:
             self._change(
                 obj.kind,
                 obj.key,
                 "patch",
-                "изменятся " + ", ".join(changed),
+                "will change " + ", ".join(changed),
                 package=obj.package,
                 fields=changed,
                 expected=expected,
             )
         if not changed:
-            self._say(obj.ref, f"v{current['version']} без изменений")
+            self._say(obj.ref, f"v{current['version']} unchanged")
         elif self.dry_run:
-            self._say(obj.ref, "изменятся " + ", ".join(changed))
+            self._say(obj.ref, "will change " + ", ".join(changed))
         else:
             current = self._rule_write(
                 obj,
@@ -1058,7 +1265,7 @@ class Applier:
                 {name: wanted[name] for name in changed},
                 {"If-Match": f'"rule-{current["version"]}"'},
             )
-            self._say(obj.ref, f"обновлены {', '.join(changed)} → v{current['version']}")
+            self._say(obj.ref, f"updated {', '.join(changed)} → v{current['version']}")
         if current.get("status") != status:
             verb = "enable" if status == "enabled" else "disable"
             self._change(
@@ -1079,7 +1286,7 @@ class Applier:
             # C002): до C005/C006 ядро отвечает 501 not_implemented и ничего не пишет.
             if "HTTP 501" in str(error):
                 raise PackageError(
-                    f"{obj.ref}: ядро ещё не исполняет поле правила — {error}"
+                    f"{obj.ref}: the core does not execute the rule field yet — {error}"
                 ) from error
             raise
 
@@ -1124,6 +1331,7 @@ EXPORT_FIELDS = {
     "WorkspaceType": ("displayName", "description", "fieldSchema", "allowedChildTypes"),
     "Role": ("name", "description"),
     "Capability": ("description",),
+    "ConnectionType": ("version", *CONNECTION_TYPE_FIELDS),
     "Skill": (
         "version",
         "description",
@@ -1162,11 +1370,11 @@ def _fetch(applier: Applier, kind: str, key: str, version: str | None) -> dict:
     if kind == "NotificationRule":
         if version:
             raise PackageError(
-                "NotificationRule выгружается только действующей версией — без --version"
+                "NotificationRule is exported only at its current version — without --version"
             )
         current = next((r for r in applier._notify_list(key=key) if r["key"] == key), None)
         if current is None:
-            raise PackageError(f"{kind}/{key} не найден в сервисе уведомлений")
+            raise PackageError(f"{kind}/{key} not found in the notification service")
         return {**current["spec"], "version": current["version"]}
     if kind in ("TaskType", "ProjectTemplate"):
         collection = "task-types" if kind == "TaskType" else "project-templates"
@@ -1176,7 +1384,7 @@ def _fetch(applier: Applier, kind: str, key: str, version: str | None) -> dict:
         else:
             items = [i for i in items if i.get("status") == "active"] or items
         if not items:
-            raise PackageError(f"{kind}/{key}{'@' + version if version else ''} не найден")
+            raise PackageError(f"{kind}/{key}{'@' + version if version else ''} not found")
         return applier._get(f"/{collection}/{max(items, key=lambda i: i['version'])['id']}")
     if kind == "Agent":
         try:
@@ -1185,8 +1393,19 @@ def _fetch(applier: Applier, kind: str, key: str, version: str | None) -> dict:
             if "404" not in str(error):
                 raise
             raise PackageError(
-                f"{kind}/{key}{'@' + version if version else ''} не найден"
+                f"{kind}/{key}{'@' + version if version else ''} not found"
             ) from error
+    if kind == "ConnectionType":
+        # без версии ядро отдаёт свежайшую active (CP-ADR-0079 §17)
+        try:
+            item = applier._get(f"/connection-types/{key}{'@' + version if version else ''}")
+        except Exception as error:  # 404 — не найден, остальное пусть видно как есть
+            if "404" not in str(error):
+                raise
+            raise PackageError(
+                f"{kind}/{key}{'@' + version if version else ''} not found"
+            ) from error
+        return {**_without_nulls(item.get("spec") or {}), "version": item["version"]}
     if kind == "ArtifactType":
         try:
             return applier._get(f"/artifact-types/{key}{'@' + version if version else ''}")
@@ -1194,7 +1413,7 @@ def _fetch(applier: Applier, kind: str, key: str, version: str | None) -> dict:
             if "404" not in str(error):
                 raise
             raise PackageError(
-                f"{kind}/{key}{'@' + version if version else ''} не найден"
+                f"{kind}/{key}{'@' + version if version else ''} not found"
             ) from error
     if kind == "WorkspaceType":
         found = [t for t in applier._list("/workspace-types") if t["key"] == key]
@@ -1213,7 +1432,7 @@ def _fetch(applier: Applier, kind: str, key: str, version: str | None) -> dict:
         if found:
             found = [applier._get(f"/skills/{found[-1]['id']}")]
     if not found:
-        raise PackageError(f"{kind}/{key} не найден")
+        raise PackageError(f"{kind}/{key} not found")
     return found[-1]
 
 
@@ -1232,7 +1451,11 @@ def to_document(kind: str, key: str, body: dict) -> dict:
     spec: dict[str, Any] = {}
     for name in EXPORT_FIELDS[kind]:
         value = body.get(name)
-        if value in (None, "", {}, []) and name not in ("fieldSchema", "approvalSchema"):
+        if value in (None, "", {}, []) and name not in (
+            "fieldSchema",
+            "approvalSchema",
+            "settingsSchema",
+        ):
             continue
         if (
             kind == "Skill"

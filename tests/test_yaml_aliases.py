@@ -57,13 +57,13 @@ def _write(tmp_path: Path, text: str) -> Path:
 
 def test_a_billion_laughs_is_refused_quickly(tmp_path: Path) -> None:
     started = time.monotonic()
-    with pytest.raises(PackageError, match="алиасы раскрываются"):
+    with pytest.raises(PackageError, match="aliases expand into"):
         _read_yaml(_write(tmp_path, LAUGHS))
     assert time.monotonic() - started < 5
 
 
 def test_a_recursive_alias_is_refused(tmp_path: Path) -> None:
-    with pytest.raises(PackageError, match="рекурсивный алиас"):
+    with pytest.raises(PackageError, match="recursive alias"):
         _read_yaml(_write(tmp_path, RECURSIVE))
 
 
@@ -78,7 +78,7 @@ def test_the_limit_counts_nodes_added_by_aliases(tmp_path: Path) -> None:
     under = "base: &b [x]\nitems: [" + ", ".join(["*b"] * (width - 1)) + "]\n"
     over = "base: &b [x]\nitems: [" + ", ".join(["*b"] * (width + 1)) + "]\n"
     assert len(_read_yaml(_write(tmp_path, under))["items"]) == width - 1
-    with pytest.raises(PackageError, match="алиасы раскрываются"):
+    with pytest.raises(PackageError, match="aliases expand into"):
         _read_yaml(_write(tmp_path, over))
 
 
@@ -90,13 +90,13 @@ def test_a_package_with_a_bomb_does_not_load(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     (package / "roles" / "bomb.yaml").write_text(LAUGHS, encoding="utf-8")
-    with pytest.raises(PackageError, match="алиасы раскрываются"):
+    with pytest.raises(PackageError, match="aliases expand into"):
         load_package(package)
 
 
 @pytest.mark.parametrize("text", [LAUGHS, RECURSIVE])
 def test_the_edit_tree_refuses_them_too(tmp_path: Path, text: str) -> None:
-    with pytest.raises(edit.PkgError, match="алиас") as refused:
+    with pytest.raises(edit.PkgError, match="alias") as refused:
         edit.Document.load(_write(tmp_path, text))
     assert refused.value.code == "yaml_invalid"
     assert edit.Document.parse(SHARED).data["spec"]["second"]["enum"] == ["a", "b"]

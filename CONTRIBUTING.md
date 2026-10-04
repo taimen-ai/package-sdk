@@ -34,12 +34,12 @@ contribution; you keep your copyright.
 ## Development setup
 
 The component is a [uv](https://docs.astral.sh/uv/) project on Python 3.12.
-It depends on sibling repositories by path (`../control-plane`, `../control-plane/client` and `../skill-sdk` for the optional extras), so develop it from
+It depends on sibling repositories by path (`../../services/control-plane`, `../../services/control-plane/client` and `../skill-sdk` for the optional extras), so develop it from
 the umbrella checkout, where the siblings are submodules:
 
 ```bash
 git clone --recurse-submodules https://github.com/taimen-ai/taimen.git
-cd taimen/package-sdk
+cd taimen/sdk/package-sdk
 uv sync                       # runtime dependencies plus the `dev` group
 uv run pytest                 # tests
 uv run ruff check .           # lint

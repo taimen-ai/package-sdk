@@ -185,7 +185,7 @@
    },
    "KnowledgePackOut": {
     "additionalProperties": true,
-    "description": "A registered pack version as Memory gives it (``kinds`` with their\n``idPatterns``, ``relations``, ``description``), with ``scope`` (``common``\nor ``tenant``) and ``ref`` (``name`` or ``tenant:name``).",
+    "description": "A registered pack version as Memory gives it (``kinds`` with their\n``idPatterns``, ``relations``, ``description``), with ``scope`` (``common``\nor ``tenant``) and ``ref``, the pinned reference Memory enables it by\n(``name@version`` or ``tenant:name@version``).",
     "properties": {
      "kinds": {
       "items": {
@@ -390,7 +390,7 @@
       "type": "string"
      },
      "path": {
-      "description": "Path inside the package, e.g. processes/tender.yaml",
+      "description": "Path inside the package, e.g. processes/onboarding.yaml",
       "maxLength": 500,
       "minLength": 1,
       "title": "Path",
@@ -626,7 +626,8 @@
        "Agent",
        "Calendar",
        "Process",
-       "WorkRule"
+       "WorkRule",
+       "View"
       ],
       "title": "Kind",
       "type": "string"
@@ -651,6 +652,69 @@
      "fields"
     ],
     "title": "PlanChangeOut",
+    "type": "object"
+   },
+   "PlanDeadlineOut": {
+    "additionalProperties": false,
+    "description": "An open instance whose deadline the migration sets, moves or lifts (FR-023).\n\nThe section also lists a deadline the new version finds already past\n(``breached``): the apply records its breach. A deadline breached on the\nold version and past by the new one at the same moment is not listed.",
+    "properties": {
+     "breached": {
+      "description": "The deadline by the new version has already passed at the time of the plan",
+      "title": "Breached",
+      "type": "boolean"
+     },
+     "dueAt": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null when the new version lifts it",
+      "title": "Dueat"
+     },
+     "element": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null for the deadline of the process",
+      "title": "Element"
+     },
+     "instanceId": {
+      "format": "uuid",
+      "title": "Instanceid",
+      "type": "string"
+     },
+     "previousDueAt": {
+      "anyOf": [
+       {
+        "format": "date-time",
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ],
+      "description": "Null when the deadline is new",
+      "title": "Previousdueat"
+     }
+    },
+    "required": [
+     "instanceId",
+     "element",
+     "previousDueAt",
+     "dueAt",
+     "breached"
+    ],
+    "title": "PlanDeadlineOut",
     "type": "object"
    },
    "PlanFieldOut": {
@@ -767,6 +831,20 @@
         "type": "null"
        }
       ]
+     },
+     "deadlines": {
+      "description": "Deadlines of migrated instances recomputed by the new version, at most 200",
+      "items": {
+       "$ref": "#/components/schemas/PlanDeadlineOut"
+      },
+      "title": "Deadlines",
+      "type": "array"
+     },
+     "deadlinesTotal": {
+      "default": 0,
+      "description": "Deadlines the migration moves, all of them: more than listed when the section is cut to its limit",
+      "title": "Deadlinestotal",
+      "type": "integer"
      },
      "fromVersion": {
       "anyOf": [
@@ -910,6 +988,11 @@
       "title": "Displayname",
       "type": "string"
      },
+     "engineRevision": {
+      "description": "Revision of the engine semantics the version runs under (CP-ADR-0074)",
+      "title": "Enginerevision",
+      "type": "integer"
+     },
      "expressionProfile": {
       "description": "CEL profile of its expressions, e.g. cp/1",
       "title": "Expressionprofile",
@@ -1034,6 +1117,7 @@
      "definitionHash",
      "identityAgent",
      "expressionProfile",
+     "engineRevision",
      "spec",
      "createdBy",
      "createdAt"
@@ -3110,5 +3194,5 @@
    }
   }
  },
- "source": "control-plane@dc6edf1"
+ "source": "control-plane@697e439"
 }

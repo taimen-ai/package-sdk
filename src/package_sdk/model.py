@@ -39,12 +39,15 @@ API = "/api/v1"
 # в другом сервисе и начинают исполняться сразу — пусть ядро к этому моменту уже приведено.
 # Calendar и Process (TAI-ADR-0054): календарь раньше процесса (cal.* и spec.calendar), процесс —
 # после TaskType и Agent (шаги human/approve ссылаются на типы задач, identity — на агента).
+# ConnectionType (CP-ADR-0079 §2) — сразу после Capability: ни на что не ссылается, а агенты
+# называют подключения его типа (Agent.spec.connections).
 CATALOG_KINDS = (
     # Онтологии памяти (TAI-ADR-0062 п.5): регистрируются первыми — на их виды опираются
     # процессы, а включение для workspace (Installation.spec.knowledge) идёт после объектов.
     "KnowledgePack",
     "WorkspaceType",
     "Capability",
+    "ConnectionType",
     "Role",
     "Skill",
     "ArtifactType",
@@ -63,6 +66,12 @@ CATALOG_KINDS = (
 PLAN_KINDS = ("Calendar", "Process")
 
 
+# Экраны пакета описанием (TAI-ADR-0066, CP-ADR-0080): вид View ставит и выводит план ядра,
+# Component ядро встраивает в каждый вид, который его называет. Ни тот ни другой — не объект
+# каталога установщика: пакет с ними уходит в план ядра целиком, вместе со словарями.
+SCREEN_KINDS = ("View", "Component")
+
+
 # Поле идентичности объекта в API.
 IDENTITY = {
     "KnowledgePack": "name",
@@ -78,6 +87,7 @@ IDENTITY = {
     "NotificationRule": "key",
     "Process": "key",
     "Calendar": "key",
+    "ConnectionType": "key",
 }
 
 
@@ -95,6 +105,7 @@ FOLDERS = {
     "NotificationRule": "notification-rules",
     "Process": "processes",
     "Calendar": "calendars",
+    "ConnectionType": "connection-types",
 }
 
 
@@ -108,7 +119,12 @@ ENV_REF = re.compile(r"\$\{([A-Z][A-Z0-9_]*)\}")
 
 
 # CP-ADR-0073 А1: поле назначения — UUID principal'а или ссылка на агента реестра по ключу
-AGENT_REF = re.compile(r"^agent:([a-z0-9][a-z0-9-]{0,62})$")
+AGENT_REF = re.compile(r"agent:([a-z0-9][a-z0-9-]{0,62})")
+# CP-ADR-0061, амендмент 2026-10-01: адресат гейта типа задачи и правила — роль пакета по slug
+ROLE_REF_PREFIX = "role:"
+ROLE_REF = re.compile(r"role:([a-z0-9][a-z0-9-]{0,62})")
+# Обе ссылки сверяются через fullmatch, как role_reference_slug ядра: `$` у match пропустил
+# бы завершающий перевод строки (``role:x\n``), а ядро такую ссылку отвергнет.
 
 
 # Сервис уведомлений (ADR-0005 notification-service §7): адрес из установки, свой audience
@@ -204,12 +220,32 @@ RETIRABLE = (
     "NotificationRule",
     "Process",
     "Calendar",
+    "ConnectionType",
 )
+
+
+# ConnectionType (CP-ADR-0079 §2): версии задаёт пакет, пара (key, version) неизменяема; у
+# версии меняется только статус — PATCH /connection-types/{key}@{version} с If-Match.
+CONNECTION_TYPE_ETAG = '"connection-type-{}"'
+# Поля spec, которые ядро хранит в версии типа подключения (всё, кроме version).
+CONNECTION_TYPE_FIELDS = (
+    "displayName",
+    "description",
+    "auth",
+    "oauth2",
+    "accountField",
+    "settingsSchema",
+    "defaultKey",
+)
+# Версионные виды: объект называется key@version (версию задаёт пакет).
+VERSIONED_REF_KINDS = ("Skill", "ConnectionType")
 
 
 # Каталоги пакета, в которых лежат не объекты каталога: тесты процессов, JSON Schema данных
 # (на них ссылается data: {$ref}) и раскладка схемы для визуального редактора.
 TESTS_DIR, SCHEMAS_DIR, LAYOUT_DIR = "tests", "schemas", ".layout"
+# Словари пакета i18n/<locale>.yaml (TAI-ADR-0066 п.1а): плоское ключ → текст, не объекты.
+I18N_DIR = "i18n"
 
 # Файлы, которые не входят в хэш установки: служебные файлы ОС и кэши интерпретатора;
 # раскладка визуального редактора (.layout/ в корне пакета) логики не несёт.
@@ -231,8 +267,8 @@ class Obj:
 
     @property
     def ref(self) -> str:
-        if self.kind == "Skill":
-            return f"Skill/{self.key}@{self.spec.get('version')}"
+        if self.kind in VERSIONED_REF_KINDS:
+            return f"{self.kind}/{self.key}@{self.spec.get('version')}"
         return f"{self.kind}/{self.key}"
 
 
@@ -361,12 +397,12 @@ def alias_expansion_problem(root: Any, limit: int = YAML_ALIAS_NODES_MAX) -> str
         stack.append((node, True))
         for child in _yaml_children(node):
             if id(child) in on_path:
-                return "рекурсивный алиас: узел содержит сам себя"
+                return "recursive alias: the node contains itself"
             if id(child) not in sizes:
                 stack.append((child, False))
     extra = sizes[id(root)] - len(sizes)
     if extra > limit:
-        return f"алиасы раскрываются ещё в {extra} узлов — больше предела {limit}"
+        return f"aliases expand into {extra} more nodes — over the limit {limit}"
     return None
 
 
@@ -421,12 +457,12 @@ def _yaml12_loader() -> Any:
 def _read_yaml(path: Path) -> Any:
     if yaml is None:
         raise PackageError(
-            "нужен PyYAML: pip install pyyaml (на Ubuntu он уже стоит — python3-yaml)"
+            "PyYAML is required: pip install pyyaml (on Ubuntu it is already installed — python3-yaml)"
         )
     try:
         return yaml.load(path.read_text(encoding="utf-8"), Loader=_yaml12_loader())
     except yaml.YAMLError as error:
-        raise PackageError(f"{_rel(path)}: не YAML: {error}") from error
+        raise PackageError(f"{_rel(path)}: not YAML: {error}") from error
 
 
 def _rel(path: Path) -> str:
@@ -439,11 +475,11 @@ def _rel(path: Path) -> str:
 def _envelope(doc: Any, path: Path) -> tuple[str, str, dict[str, Any]]:
     if not isinstance(doc, dict) or doc.get("apiVersion") != API_VERSION:
         raise PackageError(
-            f"{_rel(path)}: нужна обёртка apiVersion: {API_VERSION}, kind, key, spec"
+            f"{_rel(path)}: the apiVersion: {API_VERSION}, kind, key, spec wrapper is required"
         )
     kind, key, spec = doc.get("kind"), doc.get("key"), doc.get("spec")
     if not isinstance(kind, str) or not isinstance(key, str) or not isinstance(spec, dict):
-        raise PackageError(f"{_rel(path)}: kind и key — строки, spec — объект")
+        raise PackageError(f"{_rel(path)}: kind and key are strings, spec is an object")
     return kind, key, spec
 
 
@@ -468,35 +504,36 @@ def load_package(directory: Path, expected_key: str | None = None) -> Package:
     (TAI-ADR-0062 п.6): каталог чужого репозитория называется как угодно."""
     manifest_path = directory / "package.yaml"
     if not manifest_path.exists():
-        raise PackageError(f"{_rel(directory)}: нет package.yaml")
+        raise PackageError(f"{_rel(directory)}: no package.yaml")
     kind, key, spec = _envelope(_read_yaml(manifest_path), manifest_path)
     if kind != "Package":
-        raise PackageError(f"{_rel(manifest_path)}: kind должен быть Package")
+        raise PackageError(f"{_rel(manifest_path)}: kind must be Package")
     if expected_key is not None:
         if key != expected_key:
             raise PackageError(
-                f"{_rel(manifest_path)}: key {key!r} не совпадает с ключом пакета в установке "
+                f"{_rel(manifest_path)}: key {key!r} does not match the package key in the installation "
                 f"{expected_key!r}"
             )
     elif key != (name := package_name(directory)):
         raise PackageError(
-            f"{_rel(manifest_path)}: key {key!r} не совпадает с именем каталога {name!r}"
+            f"{_rel(manifest_path)}: key {key!r} does not match the directory name {name!r}"
         )
     package = Package(key=key, spec=spec, path=directory)
     for path in sorted(directory.rglob("*.yaml")):
         if path == manifest_path:
             continue
         inner = path.relative_to(directory).parts
-        if inner[0] in (SCHEMAS_DIR, LAYOUT_DIR):
+        if inner[0] in (SCHEMAS_DIR, LAYOUT_DIR, I18N_DIR):
             continue
         if inner[0] == TESTS_DIR:
             if path.name.endswith(".test.yaml"):
                 package.tests.append(PackageTest(key, path, _read_yaml(path)))
             continue
         obj_kind, obj_key, obj_spec = _envelope(_read_yaml(path), path)
-        if obj_kind not in CATALOG_KINDS:
+        if obj_kind not in CATALOG_KINDS and obj_kind not in SCREEN_KINDS:
             raise PackageError(
-                f"{_rel(path)}: неизвестный kind {obj_kind!r}; ожидается один из {list(CATALOG_KINDS)}"
+                f"{_rel(path)}: unknown kind {obj_kind!r}; expected one of "
+                f"{list(CATALOG_KINDS) + list(SCREEN_KINDS)}"
             )
         if obj_kind == "Process":
             obj_spec = expand_data_ref(obj_spec, path, directory)
@@ -517,9 +554,9 @@ def expand_data_ref(spec: dict[str, Any], path: Path, package_dir: Path) -> dict
         return spec  # ссылка внутрь документа или удалённая — решает ядро (удалённые оно отвергает)
     target = (path.parent / ref).resolve()
     if not target.is_relative_to(package_dir.resolve()):
-        raise PackageError(f"{_rel(path)}: data.$ref {ref!r} ведёт за пределы пакета")
+        raise PackageError(f"{_rel(path)}: data.$ref {ref!r} points outside the package")
     if not target.is_file():
-        raise PackageError(f"{_rel(path)}: data.$ref {ref!r} — нет такого файла в пакете")
+        raise PackageError(f"{_rel(path)}: data.$ref {ref!r} — no such file in the package")
     try:
         schema = (
             json.loads(target.read_text(encoding="utf-8"))
@@ -527,9 +564,9 @@ def expand_data_ref(spec: dict[str, Any], path: Path, package_dir: Path) -> dict
             else _read_yaml(target)
         )
     except json.JSONDecodeError as error:
-        raise PackageError(f"{_rel(target)}: не JSON: {error}") from error
+        raise PackageError(f"{_rel(target)}: not JSON: {error}") from error
     if not isinstance(schema, dict):
-        raise PackageError(f"{_rel(target)}: схема данных процесса — объект JSON Schema")
+        raise PackageError(f"{_rel(target)}: the process data schema is a JSON Schema object")
     return {**spec, "data": schema}
 
 
@@ -577,8 +614,8 @@ def resolve(
             if "git" in entry:
                 if git is None:
                     raise PackageError(
-                        f"lock_required: пакет {key!r} из git ставится по lock — "
-                        "зафиксируйте источники: package-sdk lock --install <файл установки>"
+                        f"lock_required: package {key!r} from git is installed by lock — "
+                        "pin the sources: package-sdk lock --install <installation file>"
                     )
                 explicit[key] = git(entry)
                 origins[key] = {
@@ -598,14 +635,15 @@ def resolve(
         if key in loaded:
             return
         if key in visiting:
-            raise PackageError(f"цикл requires: {' → '.join(chain + (key,))}")
+            raise PackageError(f"requires cycle: {' → '.join(chain + (key,))}")
         directory = explicit.get(key) or next(
             (d / key for d in search if (d / key / "package.yaml").exists()), search[0] / key
         )
         if not (directory / "package.yaml").exists():
             where = ", ".join(_rel(d) for d in search)
             raise PackageError(
-                f"пакет {key!r} не найден в {where}" + (f" (нужен {chain[-1]})" if chain else "")
+                f"package {key!r} not found in {where}"
+                + (f" (required by {chain[-1]})" if chain else "")
             )
         visiting.add(key)
         package = load_package(directory, key if key in explicit else None)
@@ -641,12 +679,12 @@ def load_installation(path: Path, git: GitSource | None = None) -> Installation:
     """Установка из файла; git — содержимое источников git по lock (package_sdk.install)."""
     kind, _key, spec = _envelope(_read_yaml(path), path)
     if kind != "Installation":
-        raise PackageError(f"{_rel(path)}: kind должен быть Installation")
+        raise PackageError(f"{_rel(path)}: kind must be Installation")
     packages = spec.get("packages")
     # Пустой список — законная установка: ядро без доменных пакетов знает только
     # системный тип task (пакета core нет, амендмент TAI-ADR-0044 2026-09-25).
     if not isinstance(packages, list):
-        raise PackageError(f"{_rel(path)}: spec.packages — список ключей пакетов")
+        raise PackageError(f"{_rel(path)}: spec.packages is a list of package keys")
     packages_dir = (
         (path.parent / spec["packagesDir"]).resolve() if spec.get("packagesDir") else None
     )
@@ -666,7 +704,7 @@ def _knowledge_section(value: Any, path: Path) -> list[dict[str, Any]]:
         return []
     where = f"{_rel(path)}: spec.knowledge"
     if not isinstance(value, list):
-        raise PackageError(f"{where} — список {{workspace, packs}}")
+        raise PackageError(f"{where} is a list of {{workspace, packs}}")
     entries: list[dict[str, Any]] = []
     for index, entry in enumerate(value):
         at = f"{where}[{index}]"
@@ -674,22 +712,22 @@ def _knowledge_section(value: Any, path: Path) -> list[dict[str, Any]]:
             raise PackageError(f"{at} — {{workspace, packs}}")
         unknown = sorted(set(entry) - {"workspace", "packs", "strict"})
         if unknown:
-            raise PackageError(f"{at}: лишние поля {', '.join(unknown)}")
+            raise PackageError(f"{at}: unknown fields {', '.join(unknown)}")
         workspace = entry.get("workspace")
         if not isinstance(workspace, str) or not workspace.strip():
-            raise PackageError(f"{at}.workspace — UUID или ${{ПЕРЕМЕННАЯ}} установки")
+            raise PackageError(f"{at}.workspace is a UUID or an installation ${{VARIABLE}}")
         packs = entry.get("packs")
         if not isinstance(packs, list):
-            raise PackageError(f"{at}.packs — список name@версия")
+            raise PackageError(f"{at}.packs is a list of name@version")
         bad = [str(p) for p in packs if not isinstance(p, str) or not PACK_REF.match(p)]
         if bad:
             raise PackageError(
-                f"{at}.packs: {', '.join(bad)} — нужно name@версия (целое), "
-                "для онтологии арендатора tenant:name@версия"
+                f"{at}.packs: {', '.join(bad)} — name@version (integer) is required, "
+                "for a tenant ontology tenant:name@version"
             )
         strict = entry.get("strict", False)
         if not isinstance(strict, bool):
-            raise PackageError(f"{at}.strict — true или false")
+            raise PackageError(f"{at}.strict is true or false")
         entries.append({"workspace": workspace, "packs": list(packs), "strict": strict})
     return entries
 
@@ -706,7 +744,7 @@ def substitute(
                 return env[name]
             if missing is not None:
                 return missing(name)
-            raise PackageError(f"переменная окружения {name} не задана (нужна пакету)")
+            raise PackageError(f"environment variable {name} is not set (required by a package)")
 
         return ENV_REF.sub(replace, value)
     if isinstance(value, dict):
@@ -775,7 +813,7 @@ def package_ref(package: Package) -> dict[str, str]:
     version = package.spec.get("version")
     if version in (None, ""):
         raise PackageError(
-            f"{_rel(package.path / 'package.yaml')}: нет spec.version — связь с пакетом "
-            "без версии не записать"
+            f"{_rel(package.path / 'package.yaml')}: no spec.version — a link to a package "
+            "cannot be written without a version"
         )
     return {"key": package.key, "version": str(version)}

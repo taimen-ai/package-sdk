@@ -101,7 +101,7 @@ def test_package_loader_reads_as_the_core(tmp_path: Path, text: str, expected: A
     path = tmp_path / "doc.yaml"
     path.write_text(_document(text), encoding="utf-8")
     if expected is REFUSED:
-        with pytest.raises(PackageError, match="не YAML"):
+        with pytest.raises(PackageError, match="not YAML"):
             _read_yaml(path)
     else:
         assert _typed(_read_yaml(path)["k"]) == _typed(expected)

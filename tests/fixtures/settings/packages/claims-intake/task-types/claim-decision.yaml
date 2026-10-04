@@ -1,0 +1,20 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: TaskType
+key: claim-decision
+spec:
+  displayName: Claim decision
+  description: A decision on a claim above the refund threshold
+  fieldSchema:
+    type: object
+    properties:
+      ticketId: {type: string}
+  lifecycleSchema:
+    statuses:
+      - {key: todo, category: active, displayName: To do}
+      - {key: done, category: terminal_success, displayName: Done}
+      - {key: cancelled, category: terminal_cancelled, displayName: Cancelled}
+    transitions:
+      - {from: todo, to: [done, cancelled]}
+    initialStatus: todo
+    completionStatus: done

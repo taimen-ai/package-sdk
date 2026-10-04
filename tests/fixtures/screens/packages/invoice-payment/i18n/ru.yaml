@@ -1,0 +1,20 @@
+invoice-payment.list.title: Счета
+invoice-payment.list.open: Счетов в работе
+invoice-payment.list.total: "{count, plural, one {Сумма # счёта} few {Сумма # счетов} many {Сумма # счетов} other {Сумма # счёта}}"
+invoice-payment.list.stage: Этап
+invoice-payment.list.deadline: Срок
+invoice-payment.card.title: Счёт
+invoice-payment.card.invoice: Счёт
+invoice-payment.card.payment: Оплата
+invoice-payment.fields.number: Номер
+invoice-payment.fields.supplier: Поставщик
+invoice-payment.fields.amount: Сумма
+invoice-payment.fields.currency: Валюта
+invoice-payment.fields.stage: Этап
+invoice-payment.fields.review: Проверка
+invoice-payment.fields.review.ok: Верно
+invoice-payment.fields.review.mismatch: Расхождение
+invoice-payment.fields.paymentReference: Платёжное поручение
+invoice-payment.fields.invoice.supplier: Поставщик
+invoice-payment.fields.invoice.amount: Сумма
+invoice-payment.fields.invoice.currency: Валюта

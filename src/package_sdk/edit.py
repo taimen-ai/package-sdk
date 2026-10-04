@@ -1,16 +1,17 @@
-"""Правка файлов пакета с сохранением файла (TAI-ADR-0054 п.12, plan Р10).
+"""Edit package files preserving the file (TAI-ADR-0054 item 12, plan R10).
 
-Мелкие операции над описанием процесса и пакетом, которые меняют только то, что
-просили: комментарии, порядок ключей, стиль кавычек, flow- и block-стиль
-остальных строк остаются как были. Работает на ruamel.yaml в режиме round-trip;
-скаляры читаются по правилам загрузчика пакета и ядра (`package_sdk.yaml12`):
-`on`, `off`, `yes`, `no`, `1_000`, `1:30`, `2026-09-30` — строки, `012` — двенадцать,
-`.inf`, `.nan` и целое длиннее тысячи цифр — ошибка. Новая строка пишется в кавычках,
-если её без кавычек прочтёт не строкой хоть один читатель — ядро, YAML 1.1 или core
-YAML 1.2 редактора автора (`yaml12.plain_is_string`: `1e3`, `1_000`, `0o12`, `yes`;
-значение — в одинарных кавычках, ключ — в двойных, `"on"`); строка, которая уже стояла в файле без кавычек, остаётся как была (TASK-001253).
+Small operations on a process description and a package that change only what
+was asked: comments, key order, quote style, flow and block style of the other
+lines stay as they were. Works on ruamel.yaml in round-trip mode; scalars are read
+by the rules of the package loader and the core (`package_sdk.yaml12`):
+`on`, `off`, `yes`, `no`, `1_000`, `1:30`, `2026-09-30` are strings, `012` is twelve,
+`.inf`, `.nan` and an integer longer than a thousand digits are errors. A new string is
+written quoted if at least one reader would read it unquoted as a non-string — the core,
+YAML 1.1 or core YAML 1.2 of the author's editor (`yaml12.plain_is_string`: `1e3`, `1_000`,
+`0o12`, `yes`; a value in single quotes, a key in double quotes, `"on"`); a string that
+already stood in the file unquoted stays as it was (TASK-001253).
 
-    package-sdk edit add-step  --file P --in <стадия|шаг> --step '{id: x, set: {a: "1"}}' [--after ID|--before ID]
+    package-sdk edit add-step  --file P --in <stage|step> --step '{id: x, set: {a: "1"}}' [--after ID|--before ID]
     package-sdk edit add-stage --file P --stage '<yaml>' [--after ID|--before ID]
     package-sdk edit add-decision-row --file P --table ID --row '{when: {a: "-"}, then: {b: 1}}' [--index N]
     package-sdk edit add-rule  --file P (--table ID --row '<yaml>' | --on-event '<yaml>')
@@ -19,22 +20,22 @@ YAML 1.2 редактора автора (`yaml12.plain_is_string`: `1e3`, `1_00
     package-sdk edit rename    --package DIR --kind Process --from OLD --to NEW
     package-sdk edit set       --file P --path 'spec.stages[go-no-go].exit' --value "data.decision != ''"
 
-Каждая операция — функция модуля и команда CLI. `--json` печатает результат или
-ошибку машиночитаемо: {"ok": false, "error": {"code", "message", "path", "hint"}}.
-`--dry-run` печатает diff и ничего не пишет. Перед записью документ проверяется
-схемой формата package-sdk (`object.schema.json`, тесты — `test.schema.json`):
-невалидная правка не записывается.
+Each operation is a module function and a CLI command. `--json` prints the result or
+the error in machine-readable form: {"ok": false, "error": {"code", "message", "path", "hint"}}.
+`--dry-run` prints the diff and writes nothing. Before writing, the document is checked
+against the package-sdk format schema (`object.schema.json`, tests — `test.schema.json`):
+an invalid edit is not written.
 
-Раскладка схемы процесса лежит отдельно от логики — `<пакет>/.layout/<ключ процесса>.json`
-(координаты элементов по id). Операции логики её не трогают, `rename` переносит
-координаты на новый id.
+The process diagram layout is kept apart from the logic — `<package>/.layout/<process key>.json`
+(element coordinates by id). Logic operations do not touch it; `rename` moves the
+coordinates to the new id.
 
-Сохранение: стиль файла (отступы, смещение `-`, ширина строки, запись null)
-подбирается при загрузке так, чтобы загрузка и запись без изменений давали тот же
-файл байт в байт. Если файл содержит то, что ruamel воспроизвести не умеет
-(например flow-коллекцию, разбитую на несколько строк), правка переносится на
-исходный текст трёхсторонним слиянием: меняются только строки, которых касается
-правка, остальное остаётся как в исходнике.
+Preservation: the file style (indents, `-` offset, line width, null notation) is
+picked at load time so that loading and writing without changes gives the same file
+byte for byte. If the file contains something ruamel cannot reproduce (for example a
+flow collection split across several lines), the edit is carried over to the source
+text by a three-way merge: only the lines the edit touches change, the rest stays
+as in the source.
 """
 
 from __future__ import annotations
@@ -128,8 +129,8 @@ def _require_ruamel() -> None:
     if YAML is None:
         raise PkgError(
             "dependency_missing",
-            "нужен ruamel.yaml: pip install ruamel.yaml",
-            hint="ruamel.yaml — зависимость package-sdk: переустановите пакет",
+            "ruamel.yaml is required: pip install ruamel.yaml",
+            hint="ruamel.yaml is a dependency of package-sdk — reinstall the package",
         )
 
 
@@ -412,7 +413,7 @@ class Document:
         try:
             text = path.read_text(encoding="utf-8")
         except FileNotFoundError as error:
-            raise PkgError("file_not_found", f"нет файла {path}", file=str(path)) from error
+            raise PkgError("file_not_found", f"no file {path}", file=str(path)) from error
         return cls.parse(text, path)
 
     @classmethod
@@ -420,7 +421,7 @@ class Document:
         try:
             data = _load(text, file=True)
         except Exception as error:  # ruamel.yaml.YAMLError и потомки
-            raise PkgError("yaml_invalid", f"не YAML: {error}", file=str(path)) from error
+            raise PkgError("yaml_invalid", f"not YAML: {error}", file=str(path)) from error
         style, exact = detect_style(text, data)
         base = text if exact else _emit(data, style, text)
         return cls(Path(path), text, data, style, exact, base)
@@ -444,7 +445,7 @@ def parse_fragment(value: str, what: str) -> Any:
     try:
         return _load(value)
     except Exception as error:
-        raise PkgError("fragment_invalid", f"{what}: не YAML: {error}") from error
+        raise PkgError("fragment_invalid", f"{what}: not YAML: {error}") from error
 
 
 def to_plain(value: Any) -> Any:
@@ -503,9 +504,9 @@ def _find_element(spec: Any, element_id: str) -> Any:
             return node
     raise PkgError(
         "element_not_found",
-        f"в процессе нет элемента {element_id!r}",
+        f"the process has no element {element_id!r}",
         path=element_id,
-        hint="id элементов — стадии, шаги, вехи, таймеры, ветви и таблицы решений",
+        hint="element ids are stages, steps, milestones, timers, branches and decision tables",
     )
 
 
@@ -517,7 +518,9 @@ def _process_spec(doc: Document) -> Any:
         or not isinstance(data.get("spec"), dict)
     ):
         raise PkgError(
-            "not_a_process", "файл не описывает процесс (kind: Process)", file=str(doc.path)
+            "not_a_process",
+            "the file does not describe a process (kind: Process)",
+            file=str(doc.path),
         )
     return data["spec"]
 
@@ -526,17 +529,17 @@ def _new_id(spec: Any, element_id: Any, where: str) -> str:
     if not isinstance(element_id, str) or not ELEMENT_ID.match(element_id):
         raise PkgError(
             "element_id_invalid",
-            f"{where}: id {element_id!r} не подходит",
+            f"{where}: id {element_id!r} is not valid",
             path=where,
-            hint="id — slug: строчные латинские буквы, цифры и '-', до 63 символов",
+            hint="id is a slug: lowercase latin letters, digits and '-', up to 63 characters",
         )
     existing = element_index(spec)
     if element_id in existing:
         raise PkgError(
             "element_id_taken",
-            f"id {element_id!r} уже занят ({existing[element_id][0]})",
+            f"id {element_id!r} is already taken ({existing[element_id][0]})",
             path=existing[element_id][0],
-            hint="id элемента уникален в процессе",
+            hint="an element id is unique within the process",
         )
     return element_id
 
@@ -544,11 +547,11 @@ def _new_id(spec: Any, element_id: Any, where: str) -> str:
 def _insert(items: Any, item: Any, *, after: str | None, before: str | None, where: str) -> int:
     ids = [i.get("id") if isinstance(i, dict) else None for i in items]
     if after is not None and before is not None:
-        raise PkgError("arguments_conflict", "нужно одно из --after и --before")
+        raise PkgError("arguments_conflict", "use only one of --after and --before")
     if after is not None or before is not None:
         anchor = after if after is not None else before
         if anchor not in ids:
-            raise PkgError("element_not_found", f"{where}: нет элемента {anchor!r}", path=where)
+            raise PkgError("element_not_found", f"{where}: no element {anchor!r}", path=where)
         position = ids.index(anchor) + (1 if after is not None else 0)
     else:
         position = len(items)
@@ -565,7 +568,7 @@ def _container(spec: Any, target: str, block: str | None) -> tuple[Any, str]:
             name = block or "steps"
             if name not in ("steps", "discretionary"):
                 raise PkgError(
-                    "block_invalid", f"у стадии блоки steps и discretionary, не {name!r}"
+                    "block_invalid", f"a stage has blocks steps and discretionary, not {name!r}"
                 )
             if name not in stage:
                 stage[name] = CommentedSeq()
@@ -578,9 +581,9 @@ def _container(spec: Any, target: str, block: str | None) -> tuple[Any, str]:
             return holder[name], f"{target}.{name}"
     raise PkgError(
         "block_not_found",
-        f"у элемента {target!r} нет блока {'/'.join(candidates)}",
+        f"element {target!r} has no block {'/'.join(candidates)}",
         path=target,
-        hint="шаг вставляется в стадию или в блок do шага, ветви, таймера",
+        hint="a step goes into a stage or into the do block of a step, branch or timer",
     )
 
 
@@ -595,7 +598,7 @@ def add_step(
 ) -> dict[str, Any]:
     spec = _process_spec(doc)
     if not isinstance(step, dict):
-        raise PkgError("fragment_invalid", "шаг — объект YAML с id и одним видом шага")
+        raise PkgError("fragment_invalid", "a step is a YAML object with id and one step kind")
     _new_id(spec, step.get("id"), "step")
     items, where = _container(spec, target, block)
     _insert(items, step, after=after, before=before, where=where)
@@ -607,7 +610,7 @@ def add_stage(
 ) -> dict[str, Any]:
     spec = _process_spec(doc)
     if not isinstance(stage, dict):
-        raise PkgError("fragment_invalid", "стадия — объект YAML с id и steps")
+        raise PkgError("fragment_invalid", "a stage is a YAML object with id and steps")
     _new_id(spec, stage.get("id"), "stage")
     for element_id, _node, where in iter_elements(stage, "stage"):
         if element_id != stage["id"]:
@@ -626,12 +629,12 @@ def add_decision_row(
     if not tables:
         raise PkgError(
             "decision_not_found",
-            f"нет таблицы решений {table!r}",
+            f"no decision table {table!r}",
             path="spec.decisions",
-            hint="таблицы объявляются в spec.decisions",
+            hint="tables are declared in spec.decisions",
         )
     if not isinstance(row, dict) or "when" not in row or "then" not in row:
-        raise PkgError("fragment_invalid", "строка таблицы — объект {when: {…}, then: {…}}")
+        raise PkgError("fragment_invalid", "a table row is an object {when: {…}, then: {…}}")
     inputs = {i.get("id") for i in tables[0].get("inputs") or []}
     outputs = {o.get("id") for o in tables[0].get("outputs") or []}
     unknown = [k for k in row["when"] if k not in inputs] + [
@@ -640,14 +643,14 @@ def add_decision_row(
     if unknown:
         raise PkgError(
             "decision_column_unknown",
-            f"в таблице {table!r} нет столбцов {unknown}",
+            f"table {table!r} has no columns {unknown}",
             path=f"decisions[{table}]",
-            hint=f"входы: {sorted(inputs)}, выходы: {sorted(outputs)}",
+            hint=f"inputs: {sorted(inputs)}, outputs: {sorted(outputs)}",
         )
     rules = tables[0].setdefault("rules", CommentedSeq())
     position = len(rules) if index is None else index
     if not 0 <= position <= len(rules):
-        raise PkgError("index_out_of_range", f"--index {index}: в таблице {len(rules)} строк")
+        raise PkgError("index_out_of_range", f"--index {index}: the table has {len(rules)} rows")
     rules.insert(position, row)
     return {"table": table, "row": position}
 
@@ -665,7 +668,7 @@ def add_rule(
         return add_decision_row(doc, table, row, index=index)
     spec = _process_spec(doc)
     if not isinstance(on_event, dict) or "on" not in on_event or "do" not in on_event:
-        raise PkgError("fragment_invalid", "реакция на событие — объект {on: {…}, do: [шаги]}")
+        raise PkgError("fragment_invalid", "an event reaction is an object {on: {…}, do: [steps]}")
     for element_id, _node, where in iter_elements(on_event, "onEvent"):
         _new_id(spec, element_id, where)
     handlers = spec.setdefault("onEvent", CommentedSeq())
@@ -689,22 +692,24 @@ def add_form_field(
     if not isinstance(human, dict):
         raise PkgError(
             "not_a_human_step",
-            f"шаг {step_id!r} не человеческий (human)",
+            f"step {step_id!r} is not a human step (human)",
             path=step_id,
-            hint="форма есть только у шага human",
+            hint="only a human step has a form",
         )
     if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", name):
-        raise PkgError("field_name_invalid", f"имя поля {name!r}: латиница, цифры и '_'")
+        raise PkgError("field_name_invalid", f"field name {name!r}: latin letters, digits and '_'")
     if not isinstance(schema, dict):
         raise PkgError(
-            "fragment_invalid", "схема поля — объект JSON Schema, например {type: string}"
+            "fragment_invalid", "a field schema is a JSON Schema object, e.g. {type: string}"
         )
     form = human.setdefault("form", CommentedMap([("schema", CommentedMap([("type", "object")]))]))
     form_schema = form.setdefault("schema", CommentedMap([("type", "object")]))
     properties = form_schema.setdefault("properties", CommentedMap())
     if name in properties:
         raise PkgError(
-            "field_taken", f"поле {name!r} уже есть в форме шага {step_id!r}", path=step_id
+            "field_taken",
+            f"field {name!r} already exists in the form of step {step_id!r}",
+            path=step_id,
         )
     properties[name] = schema
     if required:
@@ -731,7 +736,7 @@ def _parse_path(path: str) -> list[str | int]:
         else:
             parts.append(index.strip("'\""))
     if not parts:
-        raise PkgError("path_invalid", f"пустой путь {path!r}")
+        raise PkgError("path_invalid", f"empty path {path!r}")
     return parts
 
 
@@ -752,7 +757,7 @@ def set_value(doc: Document, path: str, value: Any) -> dict[str, Any]:
         node[last] = value
     else:
         raise PkgError(
-            "path_invalid", f"{path}: нельзя записать в {type(node).__name__}", path=path
+            "path_invalid", f"{path}: cannot write into {type(node).__name__}", path=path
         )
     return {"path": path, "old": to_plain(old), "new": to_plain(value)}
 
@@ -762,12 +767,12 @@ def _list_position(items: list, part: str | int, path: str) -> int:
         if -len(items) <= part < len(items):
             return part % len(items)
         raise PkgError(
-            "path_invalid", f"{path}: индекс {part} вне списка из {len(items)}", path=path
+            "path_invalid", f"{path}: index {part} is out of a list of {len(items)}", path=path
         )
     for position, item in enumerate(items):
         if isinstance(item, dict) and item.get("id") == part:
             return position
-    raise PkgError("path_invalid", f"{path}: в списке нет элемента с id {part!r}", path=path)
+    raise PkgError("path_invalid", f"{path}: the list has no element with id {part!r}", path=path)
 
 
 def _step_into(node: Any, part: str | int, trail: list, *, create: bool) -> Any:
@@ -777,10 +782,10 @@ def _step_into(node: Any, part: str | int, trail: list, *, create: bool) -> Any:
     if isinstance(node, dict) and isinstance(part, str):
         if part not in node:
             if not create:
-                raise PkgError("path_invalid", f"{where}: нет ключа", path=where)
+                raise PkgError("path_invalid", f"{where}: no key", path=where)
             node[part] = CommentedMap()
         return node[part]
-    raise PkgError("path_invalid", f"{where}: не объект и не список", path=where)
+    raise PkgError("path_invalid", f"{where}: neither an object nor a list", path=where)
 
 
 # --- переименование -----------------------------------------------------------
@@ -864,11 +869,16 @@ def _rename_in_test(test: Any, old: str, new: str) -> int:
         if step.get("advance") == f"until:{old}":
             step["advance"] = f"until:{new}"
             changed += 1
+        # наблюдение, привязанное к задаче шага (CP-ADR-0063 Ж5)
+        if isinstance(step.get("emit"), dict) and step["emit"].get("task") == old:
+            step["emit"]["task"] = new
+            changed += 1
         expect = step.get("expect")
         if isinstance(expect, dict):
             changed += _rename_key(expect.get("stages"), old, new)
             changed += _rename_key(expect.get("sla"), old, new)
             changed += _rename_steps(expect.get("tasks") or [], old, new)
+            changed += _rename_steps(expect.get("rules") or [], old, new)
             for timer in expect.get("timers") or []:
                 if timer.get("id") == old:
                     timer["id"] = new
@@ -985,7 +995,7 @@ def rename_element(
     spec = _process_spec(doc)
     index = element_index(spec)
     if old not in index:
-        raise PkgError("element_not_found", f"в процессе нет элемента {old!r}", path=old)
+        raise PkgError("element_not_found", f"the process has no element {old!r}", path=old)
     _new_id(spec, new, "--to")
     changed = _rename_refs(spec, old, new)
     result: dict[str, Any] = {"renamed": {old: new}, "references": changed}
@@ -1001,13 +1011,15 @@ def rename_object(package_dir: Path, kind: str, old: str, new: str) -> dict[str,
     folder = FOLDERS.get(kind)
     if folder is None:
         raise PkgError(
-            "kind_unknown", f"вид {kind!r} не объект пакета", hint=f"виды: {sorted(FOLDERS)}"
+            "kind_unknown",
+            f"kind {kind!r} is not a package object",
+            hint=f"kinds: {sorted(FOLDERS)}",
         )
     source = next(
         (p for p in sorted((package_dir / folder).glob("*.yaml")) if _is_object(p, kind, old)), None
     )
     if source is None:
-        raise PkgError("object_not_found", f"в {package_dir / folder} нет {kind}/{old}")
+        raise PkgError("object_not_found", f"no {kind}/{old} in {package_dir / folder}")
     manifest = Document.load(package_dir / "package.yaml")
     doc = Document.load(source)
     doc.data["key"] = new
@@ -1067,15 +1079,15 @@ def validate(doc: Document) -> None:
     errors = sorted(validator.iter_errors(data), key=lambda e: list(e.absolute_path))
     if errors:
         error = errors[0]
-        where = "/".join(str(p) for p in error.absolute_path) or "(корень)"
+        where = "/".join(str(p) for p in error.absolute_path) or "(root)"
         raise PkgError(
             "schema_violation",
             f"{where}: {error.message}",
             path=where,
             file=str(doc.path),
-            hint=f"правка не записана; ещё ошибок: {len(errors) - 1}"
+            hint=f"the edit was not written; more errors: {len(errors) - 1}"
             if len(errors) > 1
-            else "правка не записана",
+            else "the edit was not written",
         )
     if isinstance(data, dict) and data.get("kind") == "Process":
         duplicates = {k: v for k, v in element_index(data.get("spec") or {}).items() if len(v) > 1}
@@ -1083,10 +1095,10 @@ def validate(doc: Document) -> None:
             element_id, places = next(iter(duplicates.items()))
             raise PkgError(
                 "element_id_taken",
-                f"id {element_id!r} повторяется: {', '.join(places)}",
+                f"id {element_id!r} is repeated: {', '.join(places)}",
                 path=places[1],
                 file=str(doc.path),
-                hint="id элемента уникален в процессе",
+                hint="an element id is unique within the process",
             )
 
 
@@ -1112,7 +1124,7 @@ def _run(args: argparse.Namespace) -> tuple[dict[str, Any], list[tuple[Path, str
     if args.command == "rename" and args.package:
         if args.dry_run:
             raise PkgError(
-                "dry_run_unsupported", "rename объекта переносит файлы — --dry-run не поддержан"
+                "dry_run_unsupported", "renaming an object moves files — --dry-run is not supported"
             )
         return rename_object(Path(args.package), args.kind or "Process", args.old, args.new), []
     doc = Document.load(args.file)
@@ -1154,7 +1166,7 @@ def _run(args: argparse.Namespace) -> tuple[dict[str, Any], list[tuple[Path, str
     elif args.command == "rename":
         if not args.file:
             raise PkgError(
-                "arguments_missing", "rename: нужен --file (элемент) или --package (объект)"
+                "arguments_missing", "rename: --file (element) or --package (object) is required"
             )
         extra = _package_tests(package_root(doc.path), str(doc.data.get("key")))
         result = rename_element(
@@ -1182,12 +1194,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="package-sdk edit",
         # первая строка — назначение команды, как у остальных: со строчной и без точки
-        description="правка файлов пакета с сохранением стиля файла\n\n"
+        description="edit package files preserving the file style\n\n"
         + (__doc__ or "").split("\n\n", 1)[1],
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    parser.add_argument("--json", action="store_true", help="результат и ошибки — JSON")
-    parser.add_argument("--dry-run", action="store_true", help="показать diff, ничего не писать")
+    parser.add_argument("--json", action="store_true", help="result and errors as JSON")
+    parser.add_argument("--dry-run", action="store_true", help="show the diff, write nothing")
     sub = parser.add_subparsers(dest="command", required=True)
 
     def command(
@@ -1195,63 +1207,64 @@ def build_parser() -> argparse.ArgumentParser:
     ) -> argparse.ArgumentParser:
         cmd = sub.add_parser(name, help=help_text)
         cmd.add_argument(
-            "--file", required=file_required, help="файл процесса (processes/<ключ>.yaml)"
+            "--file", required=file_required, help="process file (processes/<key>.yaml)"
         )
         cmd.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
         cmd.add_argument("--dry-run", action="store_true", default=argparse.SUPPRESS)
         return cmd
 
-    fragment_help = "YAML (flow или block); @файл — прочитать из файла"
-    cmd = command("add-step", "добавить шаг в стадию или блок шага")
+    fragment_help = "YAML (flow or block); @file reads it from a file"
+    cmd = command("add-step", "add a step to a stage or a step block")
     cmd.add_argument(
-        "--in", dest="target", required=True, help="id стадии, шага с do, ветви fork или таймера"
+        "--in",
+        dest="target",
+        required=True,
+        help="id of a stage, a step with do, a fork branch or a timer",
     )
     cmd.add_argument(
-        "--block", help="имя блока: steps|discretionary у стадии, do|onCompensate у шага"
+        "--block", help="block name: steps|discretionary for a stage, do|onCompensate for a step"
     )
     cmd.add_argument("--step", required=True, help=fragment_help)
     cmd.add_argument("--after")
     cmd.add_argument("--before")
-    cmd = command("add-stage", "добавить стадию")
+    cmd = command("add-stage", "add a stage")
     cmd.add_argument("--stage", required=True, help=fragment_help)
     cmd.add_argument("--after")
     cmd.add_argument("--before")
-    cmd = command("add-decision-row", "добавить строку таблицы решений")
+    cmd = command("add-decision-row", "add a decision table row")
     cmd.add_argument("--table", required=True)
     cmd.add_argument("--row", required=True, help=fragment_help)
-    cmd.add_argument("--index", type=int, help="позиция строки (по умолчанию — в конец)")
-    cmd = command(
-        "add-rule", "добавить правило: строку таблицы (--table) или реакцию на событие (--on-event)"
-    )
+    cmd.add_argument("--index", type=int, help="row position (default: at the end)")
+    cmd = command("add-rule", "add a rule: a table row (--table) or an event reaction (--on-event)")
     cmd.add_argument("--table")
     cmd.add_argument("--row", help=fragment_help)
     cmd.add_argument("--on-event", dest="on_event", help=fragment_help)
     cmd.add_argument("--index", type=int)
-    cmd = command("add-form-field", "добавить поле в форму человеческого шага")
+    cmd = command("add-form-field", "add a field to the form of a human step")
     cmd.add_argument("--step", dest="step_id", required=True)
     cmd.add_argument("--name", required=True)
     cmd.add_argument("--schema", required=True, help=fragment_help)
     cmd.add_argument("--required", action="store_true")
-    cmd.add_argument("--label", help="подпись в uischema, если у формы есть uischema.elements")
-    cmd = command("rename", "переименовать элемент процесса или объект пакета", file_required=False)
+    cmd.add_argument("--label", help="label in uischema, if the form has uischema.elements")
+    cmd = command("rename", "rename a process element or a package object", file_required=False)
     cmd.add_argument(
-        "--package", help="каталог пакета — переименовать объект (renames в package.yaml)"
+        "--package", help="package directory — rename an object (renames in package.yaml)"
     )
-    cmd.add_argument("--kind", help="вид объекта для --package (по умолчанию Process)")
+    cmd.add_argument("--kind", help="object kind for --package (default: Process)")
     cmd.add_argument("--from", dest="old", required=True)
     cmd.add_argument("--to", dest="new", required=True)
     cmd.add_argument(
         "--no-migration",
         action="store_true",
-        help="не дописывать migrations (процесс ещё не опубликован)",
+        help="do not append migrations (the process is not published yet)",
     )
-    cmd = command("set", "записать значение по пути")
+    cmd = command("set", "write a value at a path")
     cmd.add_argument(
-        "--path", required=True, help="spec.stages[go-no-go].exit; в скобках индекс или id"
+        "--path", required=True, help="spec.stages[go-no-go].exit; an index or an id in brackets"
     )
-    cmd.add_argument("--value", required=True, help="значение YAML")
+    cmd.add_argument("--value", required=True, help="YAML value")
     cmd.add_argument(
-        "--string", action="store_true", help="значение — строка как есть, без разбора YAML"
+        "--string", action="store_true", help="the value is a string as is, without YAML parsing"
     )
     return parser
 
@@ -1265,8 +1278,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps({"ok": False, "error": error.as_dict()}, ensure_ascii=False))
         else:
             print(
-                f"ошибка: {error.code}: {error.message}"
-                + (f" (подсказка: {error.hint})" if error.hint else ""),
+                f"error: {error.code}: {error.message}"
+                + (f" (hint: {error.hint})" if error.hint else ""),
                 file=sys.stderr,
             )
         return 1

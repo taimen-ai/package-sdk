@@ -1,0 +1,33 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+# A customer claim: above the refund threshold of the settings a person decides on it,
+# below it the claim closes at once.
+apiVersion: taimen.ai/v1
+kind: Process
+key: claim
+spec:
+  version: 1
+  displayName: Claim
+  identity: {agent: claim-process}
+  owner: [{role: claims}]
+  data:
+    type: object
+    required: [ticketId, amount]
+    properties:
+      ticketId: {type: string}
+      amount: {type: integer}
+  start:
+    on: {observation: helpdesk.ticket_created}
+    key: "'claim:' + string(event.payload.ticketId)"
+    set:
+      ticketId: string(event.payload.ticketId)
+      amount: int(event.payload.amount)
+  stages:
+    - id: review
+      steps:
+        - id: decide-claim
+          when: settings.escalate && data.amount > settings.refundThreshold
+          human:
+            taskType: claim-decision
+            assign: [{role: claims}]
+        - id: close
+          complete: {outcome: closed}

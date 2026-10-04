@@ -30,13 +30,13 @@ from typing import Any
 import pytest
 import yaml
 
-from package_sdk import cli, model, sandbox, testing
+from package_sdk import cli, layout, model, sandbox, testing
 
 REPO = Path(__file__).resolve().parents[1]
 EXAMPLE = REPO / "examples" / "claims"
 PACKAGE = EXAMPLE / "claims"
 INTEGRATION = PACKAGE / "integration" / "src"
-CORE = REPO.parent / "control-plane"
+CORE = layout.neighbour("control-plane")
 
 
 def _load(name: str, path: Path) -> ModuleType:
@@ -277,7 +277,7 @@ def _example_words() -> set[str]:
 def test_the_guard_of_the_core_does_not_find_the_words_of_the_example() -> None:
     guard_path = CORE / "tests" / "unit" / "test_process_neutrality.py"
     if not guard_path.exists():
-        pytest.skip("нет соседа ../control-plane: страж ядра сверяется в CI")
+        pytest.skip(f"no core next to the SDK ({guard_path}): its guard is checked in CI")
     guard = _load("core_process_neutrality", guard_path)
     words = sorted(_example_words(), key=len, reverse=True)
     pattern = re.compile(r"(?<![\w-])(" + "|".join(map(re.escape, words)) + r")(?![\w-])", re.I)

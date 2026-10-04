@@ -58,13 +58,13 @@ class Exported:
     warnings: list[str] = field(default_factory=list)
 
     def line(self) -> str:
-        what = "записан" if self.created else ("обновлён" if self.changed else "без изменений")
+        what = "written" if self.created else ("updated" if self.changed else "unchanged")
         text = f"{what} {_rel(self.path)} (v{self.version})"
         if self.console_fields:
-            text += "; правлено в консоли: " + ", ".join(self.console_fields)
+            text += "; edited in the console: " + ", ".join(self.console_fields)
         if self.substituted:
-            text += "; значения стенда → " + ", ".join(f"${{{n}}}" for n in self.substituted)
-        return "\n".join([text, *(f"предупреждение: {w}" for w in self.warnings)])
+            text += "; stand values → " + ", ".join(f"${{{n}}}" for n in self.substituted)
+        return "\n".join([text, *(f"warning: {w}" for w in self.warnings)])
 
 
 def fetch(
@@ -79,7 +79,7 @@ def fetch(
         status = getattr(error, "status", None)
         if status != 404 and (status is not None or "HTTP 404" not in str(error)):
             raise
-        raise PackageError(f"{kind}/{ref} не найден") from error
+        raise PackageError(f"{kind}/{ref} not found") from error
 
 
 def _template(text: str) -> re.Pattern[str]:
@@ -499,8 +499,8 @@ def _keep_data_ref(
         spec["data"] = data
         return None
     return (
-        f"data: схема данных на стенде отличается от {data['$ref']} — ссылка заменена "
-        "встроенной схемой; перенесите правку в файл схемы и верните $ref"
+        f"data: the data schema on the stand differs from {data['$ref']} — the reference was "
+        "replaced by an inline schema; move the edit into the schema file and restore $ref"
     )
 
 
@@ -529,7 +529,7 @@ def export_object(
     """Записать объект стенда в пакет: правкой существующего файла или новым файлом.
     env — значения установки: по ним значения стенда возвращаются в ${ПЕРЕМЕННЫЕ}."""
     if kind not in ROUTES:
-        raise PackageError(f"{kind}: выгрузка этим путём — только Process и Calendar")
+        raise PackageError(f"{kind}: export this way supports only Process and Calendar")
     spec = dict(body.get("spec") or {})
     marked = console_fields(plan or {}, kind, key)
     package = load_package(package_dir)
@@ -551,8 +551,9 @@ def export_object(
             edit.validate(edit.Document.parse(text, path))
         except edit.PkgError as error:
             raise PackageError(
-                f"{_rel(path)}: {kind}/{key} не записан — {error.message}. Значения установки "
-                "в пакет не пишутся: задайте их переменные (--env), чтобы выгрузка вернула ${…}"
+                f"{_rel(path)}: {kind}/{key} not written — {error.message}. Installation "
+                "values are not written into the package: set their variables (--env) so that "
+                "export restores ${…}"
             ) from error
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
@@ -572,11 +573,11 @@ def export_object(
         reparsed = edit.Document.parse(text, path)
         edit.validate(reparsed)
     except edit.PkgError as error:
-        raise PackageError(f"{_rel(path)}: {kind}/{key} не записан — {error.message}") from error
+        raise PackageError(f"{_rel(path)}: {kind}/{key} not written — {error.message}") from error
     if edit.to_plain(reparsed.data).get("spec") != wanted or _package_read(text) != wanted:
         raise PackageError(
-            f"{_rel(path)}: {kind}/{key} не записан — запись файла не совпала с выгрузкой "
-            "(стиль файла не воспроизводится); выгрузите в новый файл и перенесите правку"
+            f"{_rel(path)}: {kind}/{key} not written — the written file does not match the export "
+            "(the file style cannot be reproduced); export into a new file and move the edit over"
         )
     changed = text != doc.text
     if changed:

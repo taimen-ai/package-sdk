@@ -1,0 +1,51 @@
+apiVersion: taimen.ai/v1
+kind: Package
+key: acme-claims
+spec:
+  version: 0.4.0
+  displayName: Customer claims
+  settings:
+    schema:
+      type: object
+      required: [refundThreshold]
+      properties:
+        refundThreshold: {type: integer, minimum: 0, maximum: 10000000, default: 50000}
+        reviewDueWorkdays: {type: integer, minimum: 1, maximum: 30, default: 2}
+        escalate: {type: boolean, default: false}
+        escalationRole: {type: string, x-ref: role, default: claims-lead}
+        channel: {type: string, enum: [email, chat], default: email}
+        replyTemplate: {type: string, maxLength: 2000, default: ""}
+        intake:
+          type: object
+          properties:
+            mailbox: {type: string, format: email, default: claims@example.com}
+            limits:
+              type: object
+              properties:
+                perDay: {type: integer, minimum: 1, default: 100}
+                tags: {type: array, items: {type: string, pattern: "^[a-z]+$"}, maxItems: 20, default: []}
+    uischema:
+      type: VerticalLayout
+      elements:
+        - type: Group
+          label: acme-claims.settings.groups.approval
+          elements:
+            - type: HorizontalLayout
+              elements:
+                - {type: Control, scope: "#/properties/refundThreshold"}
+                - {type: Control, scope: "#/properties/reviewDueWorkdays"}
+            - {type: Control, scope: "#/properties/escalate"}
+            - type: Control
+              scope: "#/properties/escalationRole"
+              label: acme-claims.settings.escalationRoleShort
+              rule:
+                effect: SHOW
+                condition: {scope: "#/properties/escalate", schema: {const: true}}
+        - {type: Label, text: acme-claims.settings.notes.channel}
+        - {type: Control, scope: "#/properties/channel"}
+        - type: Control
+          scope: "#/properties/replyTemplate"
+          rule:
+            effect: DISABLE
+            condition: {scope: "#/properties/channel", schema: {enum: [chat]}, failWhenUndefined: true}
+        - {type: Control, scope: "#/properties/intake/properties/limits/properties/perDay"}

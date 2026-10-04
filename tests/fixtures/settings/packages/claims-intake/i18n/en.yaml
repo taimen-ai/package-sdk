@@ -1,0 +1,10 @@
+claims-intake.title: Claims intake
+claims-intake.settings.refundThreshold: Refund threshold
+claims-intake.settings.refundThreshold.help: Claims above it go to a person
+claims-intake.settings.escalate: Escalate large claims
+claims-intake.settings.escalationRole: Escalation role
+claims-intake.settings.channel: Reply channel
+claims-intake.settings.tags: Tags
+claims-intake.settings.intake: Intake
+claims-intake.settings.intake.mailbox: Mailbox
+claims-intake.settings.groups.approval: Approval

@@ -66,6 +66,11 @@ def test_a_test_reading_the_state_of_deadlines_matches_the_schema() -> None:
         {"workdays": 2, "calendar": "office"},
         {"workhours": 1.5, "warnBefore": {"workhours": 0.5}},
         {"workdays": 5, "warnBefore": {"workdays": 1}},
+        # число рабочих единиц выражением (CP-ADR-0081 Г1): срока и его warnBefore
+        {"workdays": {"expr": "settings.reviewDays"}, "warnBefore": {"workhours": 4}},
+        {"workhours": {"expr": "settings.hours * 2"}, "calendar": "office"},
+        {"workdays": 5, "warnBefore": {"workdays": {"expr": "settings.warnDays"}}},
+        {"duration": "PT4H", "warnBefore": {"workhours": {"expr": "data.warnHours"}}},
     ],
 )
 def test_every_form_of_a_due_is_accepted_on_a_step_and_the_process(due: Any) -> None:
@@ -85,6 +90,14 @@ def test_every_form_of_a_due_is_accepted_on_a_step_and_the_process(due: Any) -> 
         {"workhours": 0},
         {"workdays": 1, "warnBefore": {"workdays": 1, "workhours": 1}},
         {"duration": "PT4H", "extra": 1},
+        # выражение — только {expr: <строка>} без других членов
+        {"workdays": {}},
+        {"workdays": {"expr": 3}},
+        {"workdays": {"expr": ""}},
+        {"workdays": "settings.reviewDays"},
+        {"workhours": {"expr": "settings.hours", "calendar": "office"}},
+        {"workdays": 1, "warnBefore": {"workhours": {"cel": "settings.hours"}}},
+        {"duration": {"expr": "settings.duration"}},
     ],
 )
 def test_a_malformed_due_is_rejected(due: Any) -> None:
@@ -153,7 +166,7 @@ def test_check_accepts_a_package_with_deadlines() -> None:
 def test_working_units_need_a_calendar(package: Path) -> None:
     _edit(package / PROCESS, "  calendar: office\n", "")
     errors, _ = _check(package)
-    assert any("spec.due" in e and "workdays" in e and "календар" in e for e in errors), errors
+    assert any("spec.due" in e and "workdays" in e and "no calendar" in e for e in errors), errors
     assert any("review-request: human.due" in e for e in errors), errors
 
 
@@ -188,7 +201,7 @@ def test_a_calendar_outside_the_package_is_a_warning(package: Path) -> None:
 def test_expect_sla_names_a_step_with_a_due_or_the_process(package: Path) -> None:
     _edit(package / TEST, "sla: {review-request: ok, process: ok}", "sla: {review: ok}")
     errors, _ = _check(package)
-    assert any("expect.sla 'review'" in e and "нет срока" in e for e in errors), errors
+    assert any("expect.sla 'review'" in e and "has no due" in e for e in errors), errors
     _edit(package / TEST, "sla: {review: ok}", "sla: {no-such-step: ok}")
     errors, _ = _check(package)
     assert any("expect.sla 'no-such-step'" in e for e in errors), errors

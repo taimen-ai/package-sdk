@@ -1,0 +1,88 @@
+# The package check in CI: the test pyramid without a stand (the schema, references and
+# validators of the core, the skill contracts and tests of the integration code, the
+# scenarios in the sandbox run by the core code) and the generated README section.
+#
+# package-sdk runs all of it with the code of the core, so the components of the platform
+# are cloned next to it as sibling directories (.platform/), at revisions of one
+# platform release. They are never installed from the public package index: no such names
+# there (dependency confusion). The package is checked out into a directory named by its
+# key (demo-pack/): check, test and docs require the directory name to match the key.
+name: package
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    # Scenarios of rules and task types need an empty PostgreSQL database (with
+    # pg_trgm): without it they are not run and the job is red. Uncomment the
+    # service and PACKAGE_SDK_SANDBOX_DATABASE_URL below.
+    # services:
+    #   postgres:
+    #     # Pin the image by digest (postgres:16@sha256:…), as the actions below; it has pg_trgm.
+    #     image: postgres:16
+    #     env:
+    #       POSTGRES_PASSWORD: sandbox
+    #       POSTGRES_DB: sandbox
+    #     ports: ["5432:5432"]
+    #     options: >-
+    #       --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    env:
+      # Where the components are cloned from ($PLATFORM_GIT/<name>.git) and their revisions
+      # of one platform release: a tag (v…) or a full commit SHA. Each component is pinned
+      # by its own variable and only here: every step below reads these variables. init
+      # fills them from the installation it ran in; an empty one stops the job.
+      PLATFORM_GIT: "https://git.example/platform"
+      PACKAGE_SDK_REF: "v0.1.4"
+      CONTROL_PLANE_REF: "v0.1.4"
+      PLATFORM_AUTH_SDK_REF: "v0.1.4"
+      # PACKAGE_SDK_SANDBOX_DATABASE_URL: postgresql://postgres:sandbox@localhost:5432/sandbox
+    steps:
+      - name: Pinned revisions
+        run: |
+          if [ -z "$PLATFORM_GIT" ]; then
+            echo "::error::PLATFORM_GIT is not set: the address of the component repositories"
+            exit 1
+          fi
+          missing=""
+          for name in PACKAGE_SDK_REF CONTROL_PLANE_REF PLATFORM_AUTH_SDK_REF; do
+            if [ -z "${!name}" ]; then missing="$missing $name"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::not set:$missing (a tag or a full commit SHA of one platform release)"
+            exit 1
+          fi
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          path: demo-pack
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
+      - name: package-sdk and the components of the platform as sibling directories
+        env:
+          GIT_TERMINAL_PROMPT: "0"  # a missing repository fails, not asks for a login
+        run: |
+          mkdir -p .platform && cd .platform
+          clone() {  # clone <name> <ref>: a tag or a full commit SHA
+            url="$PLATFORM_GIT/$1.git"
+            git clone --quiet --filter=blob:none --no-checkout "$url" "$1" || {
+              echo "::error::cannot clone $url: no such repository or no access (PLATFORM_GIT)"
+              exit 1
+            }
+            git -C "$1" checkout --quiet --detach "$2" || {
+              echo "::error::$url has no revision $2"
+              exit 1
+            }
+          }
+          clone package-sdk "$PACKAGE_SDK_REF"
+          clone control-plane "$CONTROL_PLANE_REF"
+          clone platform-auth-sdk "$PLATFORM_AUTH_SDK_REF"
+          uv tool install "./package-sdk[sandbox]"
+          echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
+      - name: package-sdk test
+        run: package-sdk test .
+        working-directory: demo-pack
+      - name: The generated README section is up to date
+        run: package-sdk docs . --check
+        working-directory: demo-pack

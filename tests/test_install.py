@@ -443,7 +443,7 @@ def test_repeated_plan_after_apply_is_empty(
     }
     again = _plan(project, core, notify)
     assert count_changes(again) == 0
-    assert again["_lines"][-1] == "изменений нет"
+    assert again["_lines"][-1] == "no changes"
 
 
 def test_stand_changed_between_plan_and_apply_is_plan_stale_before_any_write(
@@ -490,7 +490,7 @@ def test_core_refuses_a_plan_that_went_stale_during_the_apply(
         return original(route, body)
 
     monkeypatch.setattr(core, "_packages", racing)
-    with pytest.raises(PackageError, match="план устарел"):
+    with pytest.raises(PackageError, match="plan is stale"):
         _apply(project, core, notify)
 
 
@@ -502,7 +502,7 @@ def test_edited_plan_file_is_refused(
     document = json.loads(path.read_text(encoding="utf-8"))
     document["sections"][0]["changes"] = []
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(PackageError, match="planHash не сходится"):
+    with pytest.raises(PackageError, match="planHash does not match"):
         _apply(project, core, notify)
     assert core.writes == [] and core.apply_calls == []
 
@@ -542,12 +542,12 @@ def test_without_the_flag_console_edits_are_kept(
         install.ConsoleEdit("acme-claims", "TaskType", "claim-review", (), ("displayName",))
     ]
     lines = document["_lines"]
-    assert "правки консоли: сохраняются (перезаписать — plan --overwrite-console)" in lines
+    assert "console edits: kept (to overwrite — plan --overwrite-console)" in lines
     assert "  = TaskType/claim-review (acme-claims): displayName" in lines
-    assert "  будут перезаписаны:" not in lines
+    assert "  will be overwritten:" not in lines
     asked: list[str] = []
     _apply(project, core, notify, assume_yes=False, confirm=_yes(asked))
-    assert asked == [f"Применить план {document['planHash']}?"]
+    assert asked == [f"Apply plan {document['planHash']}?"]
     assert [b.get("overwriteConsole") for b in core.apply_calls] == [None]
     assert core.console == {"TaskType/claim-review": {"displayName": "Claim review (console)"}}
 
@@ -571,12 +571,12 @@ def test_with_the_flag_console_edits_are_overwritten(
         install.ConsoleEdit("acme-claims", "TaskType", "claim-review", ("displayName",), ())
     ]
     lines = document["_lines"]
-    assert "правки консоли: перезаписываются (overwriteConsole)" in lines
+    assert "console edits: overwritten (overwriteConsole)" in lines
     assert "  ! TaskType/claim-review (acme-claims): displayName" in lines
     asked: list[str] = []
     _apply(project, core, notify, assume_yes=False, confirm=_yes(asked))
     assert asked == [
-        f"Применить план {document['planHash']} с перезаписью правок консоли (overwriteConsole)?"
+        f"Apply plan {document['planHash']} overwriting console edits (overwriteConsole)?"
     ]
     # план ядра перед записью строится заново с тем же флагом, и с ним же идёт apply
     assert core.plan_calls[-1]["overwriteConsole"] is True
@@ -594,12 +594,12 @@ def test_the_flag_is_under_the_plan_hash(
     document = json.loads(path.read_text(encoding="utf-8"))
     document["overwriteConsole"] = True
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(PackageError, match="planHash не сходится"):
+    with pytest.raises(PackageError, match="planHash does not match"):
         _apply(project, core, notify)
     # и с пересчитанным хэшем документа флаг не проходит: план ядра с ним — другой
     document["planHash"] = document_hash(document)
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(PackageError, match=r"plan_stale.*план ядра пакета acme-claims"):
+    with pytest.raises(PackageError, match=r"plan_stale.*core plan of package acme-claims"):
         _apply(project, core, notify)
     assert core.apply_calls == [] and core.writes == [] and core.core_writes == []
     assert core.console == {"TaskType/claim-review": {"displayName": "Claim review (console)"}}
@@ -639,16 +639,16 @@ def test_apply_needs_a_human_yes(
 ) -> None:
     _plan(project, core, notify)
     asked: list[str] = []
-    with pytest.raises(PackageError, match="подтверждения"):
+    with pytest.raises(PackageError, match="requires confirmation by a human"):
         _apply(project, core, notify, assume_yes=False)
-    with pytest.raises(PackageError, match="не подтверждён"):
+    with pytest.raises(PackageError, match="the plan was not confirmed"):
         _apply(project, core, notify, assume_yes=False, confirm=lambda q: asked.append(q) or False)
-    assert asked and "Применить план sha256:" in asked[0]
+    assert asked and "Apply plan sha256:" in asked[0]
     assert core.writes == [] and core.core_writes == []
     lines: list[str] = []
     _apply(project, core, notify, assume_yes=False, confirm=lambda _q: True, log=lines.append)
     assert not any("assume_yes" in line for line in lines)
-    assert any(line.startswith("план установки acme-prod") for line in lines)
+    assert any(line.startswith("installation plan acme-prod") for line in lines)
 
 
 def test_bootstrap_path_is_marked_in_the_log(
@@ -657,7 +657,7 @@ def test_bootstrap_path_is_marked_in_the_log(
     _plan(project, core, notify)
     lines: list[str] = []
     _apply(project, core, notify, log=lines.append)
-    assert any("без подтверждения человека (assume_yes)" in line for line in lines)
+    assert any("without confirmation by a human (assume_yes)" in line for line in lines)
 
 
 def test_incompatible_core_version_is_refused_before_any_write(
@@ -677,7 +677,7 @@ def test_core_update_after_the_plan_is_plan_stale(
     _plan(project, core, notify)
     assert core.openapi is not None
     core.openapi["info"]["version"] = "0.10.0"
-    with pytest.raises(PackageError, match=r"ядро стенда обновилось: 0.9.0 → 0.10.0"):
+    with pytest.raises(PackageError, match=r"the stand's core was updated: 0.9.0 → 0.10.0"):
         _apply(project, core, notify)
 
 
@@ -686,7 +686,7 @@ def test_missing_required_variable_stops_the_plan_with_its_description(
 ) -> None:
     env = {k: v for k, v in ENV.items() if k != "HELPDESK_URL"}
     with pytest.raises(
-        PackageError, match="HELPDESK_URL не задана — пакет acme-claims: Helpdesk API"
+        PackageError, match="HELPDESK_URL is not set — package acme-claims: Helpdesk API"
     ):
         _plan(project, core, notify, env=env)
     assert core.plan_calls == []
@@ -698,7 +698,7 @@ def test_variable_of_a_stand_object_must_exist_there(
     core.workspaces.clear()
     with pytest.raises(
         PackageError,
-        match=f"CLAIMS_WORKSPACE_ID пакета acme-claims: workspace {WORKSPACE} не найден",
+        match=f"CLAIMS_WORKSPACE_ID of package acme-claims: workspace {WORKSPACE} not found",
     ):
         _plan(project, core, notify)
 
@@ -717,7 +717,7 @@ def test_calendar_still_in_use_after_the_plan_is_refused(
 
 
 def test_rules_need_the_notification_service(project: Path, core: FakeCore) -> None:
-    with pytest.raises(PackageError, match="сервис уведомлений"):
+    with pytest.raises(PackageError, match="notification service"):
         install.plan(project / "packages.yaml", target=_target(core), env=ENV, log=lambda _m: None)
 
 
@@ -725,7 +725,7 @@ def test_registered_ontology_with_other_content_needs_a_new_version(
     project: Path, core: FakeCore, notify: FakeNotificationService
 ) -> None:
     core.packs["claims@1"] = {**CLAIMS, "kinds": [{"kind": "case"}]}
-    with pytest.raises(PackageError, match="поднимите version"):
+    with pytest.raises(PackageError, match="bump version"):
         _plan(project, core, notify)
 
 
@@ -761,8 +761,8 @@ def test_cli_plan_needs_out_and_apply_only_takes_a_plan(
     assert cli.main([*args, "--env", str(project / "none.env")]) == 0
     out = capsys.readouterr().out
     assert "  + Role/claims-officer (acme-base)" in out
-    assert "  - Process/claim-v0: новые экземпляры не стартуют, живые доживают: 2" in out
-    assert f"план сохранён: {plan_file}" in out
+    assert "  - Process/claim-v0: new instances do not start, live ones run to completion: 2" in out
+    assert f"plan saved: {plan_file}" in out
     # без терминала подтверждения нет — ничего не пишется
     applying = ["apply", "--plan", str(plan_file), "--server", SERVER]
     assert cli.main([*applying, "--env", str(project / "none.env")]) == 1
@@ -770,7 +770,7 @@ def test_cli_plan_needs_out_and_apply_only_takes_a_plan(
     assert (
         cli.main(["apply", "--plan", str(plan_file), "--server", "https://other.example.com"]) == 1
     )
-    assert "построен для" in capsys.readouterr().err
+    assert "the plan was built for" in capsys.readouterr().err
 
 
 def test_cli_plan_overwrite_console(
@@ -818,7 +818,7 @@ def test_cli_apply_with_a_yes(
     )
     monkeypatch.setattr(commands, "_ask", lambda _q: True)
     assert cli.main(["apply", "--plan", str(plan_file), "--server", SERVER, "--env", none]) == 0
-    assert "применён план sha256:" in capsys.readouterr().out
+    assert "applied plan sha256:" in capsys.readouterr().out
     assert (
         cli.main(
             [
@@ -835,7 +835,7 @@ def test_cli_apply_with_a_yes(
         )
         == 0
     )
-    assert "изменений нет" in capsys.readouterr().out
+    assert "no changes" in capsys.readouterr().out
 
 
 # --- источники git и lock ----------------------------------------------------------------
@@ -994,7 +994,7 @@ def test_unreachable_source_falls_back_to_a_matching_cache(
     install.lock(git_project / "packages.yaml", log=lambda _m: None)
     shutil.rmtree(remote)
     planned = _plan(git_project, core, notify)
-    assert any("недоступен" in line for line in planned["_lines"])
+    assert any("is unavailable" in line for line in planned["_lines"])
 
 
 def test_path_and_git_packages_take_their_key_from_the_manifest(project: Path) -> None:
@@ -1007,7 +1007,7 @@ def test_path_and_git_packages_take_their_key_from_the_manifest(project: Path) -
         [{"key": "vendored", "path": "vendor/some-dir"}], path=project / "x.yaml"
     )
     assert [p.key for p in installation.packages] == ["vendored"]
-    with pytest.raises(PackageError, match="не совпадает с ключом пакета в установке"):
+    with pytest.raises(PackageError, match="does not match the package key in the installation"):
         model.resolve([{"key": "other", "path": "vendor/some-dir"}], path=project / "x.yaml")
 
 
@@ -1085,7 +1085,7 @@ def test_symlinks_in_a_git_package_are_refused(git_project: Path, remote: Path) 
     _git("-c", "user.name=t", "-c", "user.email=t@example.com", "add", ".", cwd=remote)
     _git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "link", cwd=remote)
     _git("tag", "-f", "v0.1.0", cwd=remote)
-    with pytest.raises(PackageError, match="символическая ссылка"):
+    with pytest.raises(PackageError, match="symbolic link"):
         install.lock(git_project / "packages.yaml", log=lambda _m: None)
     assert not (git_project / "packages.lock").exists()
 
@@ -1119,7 +1119,7 @@ def test_plan_sections_must_come_in_order(
     document["sections"] = [s for s in document["sections"] if s["kind"] != "knowledge"]
     document["planHash"] = document_hash(document)
     path.write_text(json.dumps(document), encoding="utf-8")
-    with pytest.raises(PackageError, match="нужны catalog, core, knowledge"):
+    with pytest.raises(PackageError, match="expected catalog, core, knowledge"):
         _apply(project, core, notify)
 
 
@@ -1229,12 +1229,15 @@ def _tree(*entries: tuple[str, bytes]) -> bytes:
 @pytest.mark.parametrize(
     ("entries", "said"),
     [
-        ([("100644", b"pkg/roles/Case.yaml"), ("100644", b"pkg/roles/case.yaml")], "регистром"),
+        (
+            [("100644", b"pkg/roles/Case.yaml"), ("100644", b"pkg/roles/case.yaml")],
+            "differ only in case",
+        ),
         # каталоги: Roles/ и roles/ на файловой системе без учёта регистра сольются
-        ([("100644", b"pkg/Roles/a.yaml"), ("100644", b"pkg/roles/b.yaml")], "один каталог"),
-        ([("100644", b"pkg/roles"), ("100644", b"pkg/Roles/b.yaml")], "регистром"),
-        ([("100644", b"pkg/\xff.yaml")], "не в UTF-8"),
-        ([("100664", b"pkg/package.yaml")], "режим 100664"),
+        ([("100644", b"pkg/Roles/a.yaml"), ("100644", b"pkg/roles/b.yaml")], "the same directory"),
+        ([("100644", b"pkg/roles"), ("100644", b"pkg/Roles/b.yaml")], "differ only in case"),
+        ([("100644", b"pkg/\xff.yaml")], "is not UTF-8"),
+        ([("100664", b"pkg/package.yaml")], "mode 100664"),
     ],
 )
 def test_tree_entries_a_package_cannot_have(
@@ -1332,7 +1335,7 @@ def test_the_cache_warning_of_load_goes_to_stderr(
     install.load(path, strict=False)
 
     captured = capsys.readouterr()
-    assert captured.out == "" and "из кэша" in captured.err
+    assert captured.out == "" and "from the cache" in captured.err
 
 
 def test_test_install_json_is_clean_json_when_the_cache_is_used(
@@ -1349,7 +1352,7 @@ def test_test_install_json_is_clean_json_when_the_cache_is_used(
     captured = capsys.readouterr()
     report = json.loads(captured.out)
     assert report["packages"] == ["acme-extra"]
-    assert "из кэша" in captured.err
+    assert "from the cache" in captured.err
 
 
 # --- уборка кэша: cache prune и брошенные временные выгрузки (TASK-001155) --------------------
@@ -1394,7 +1397,7 @@ def test_cache_prune_removes_only_checkouts_no_lock_refers_to(
 
     (kept,) = _checkouts()
     assert kept != old and not old.exists()
-    assert "удалено: 1" in capsys.readouterr().out
+    assert "checkouts removed: 1" in capsys.readouterr().out
     assert list(GitCache().root.glob("*/repo.git/HEAD"))  # зеркало осталось
     # установка по-прежнему грузится из кэша, без сети
     shutil.rmtree(remote)
@@ -1484,7 +1487,7 @@ def test_cache_prune_spares_a_recently_used_checkout_nobody_locked_yet(
 
     assert cli.main(["cache", "prune"]) == 0
 
-    assert checkout.exists() and "недавно использованных: 1" in capsys.readouterr().out
+    assert checkout.exists() and "recently used: 1" in capsys.readouterr().out
     _age(checkout)
     assert cli.main(["cache", "prune"]) == 0
     assert not checkout.exists()
@@ -1533,7 +1536,7 @@ def test_a_checkout_removed_while_locking_is_not_pinned(
     _prune_during_lock(monkeypatch)
     monkeypatch.setattr(lock_module, "STAGING_MAX_AGE", 0)
 
-    with pytest.raises(PackageError, match="изменилась во время фиксации"):
+    with pytest.raises(PackageError, match="changed while locking"):
         install.lock(path, log=lambda _m: None)
 
     assert not (project / "one" / "packages.lock").exists()
@@ -1557,7 +1560,7 @@ def test_a_checkout_pruned_while_its_hash_is_checked_is_a_clear_retry(
 
     monkeypatch.setattr(model, "_hashed_files", listed_then_pruned)
 
-    with pytest.raises(PackageError, match=r"удалена во время чтения.*повторите"):
+    with pytest.raises(PackageError, match=r"was removed while being read.*run the command again"):
         install.load(path, strict=False)
 
     assert not checkout.exists()
@@ -1606,7 +1609,7 @@ def test_cache_prune_needs_a_lock_or_all(
     assert cli.main(["cache", "prune"]) == 1
     assert "--all" in capsys.readouterr().err
     assert cli.main(["cache", "prune", "--lock", str(nowhere / "packages.lock")]) == 1
-    assert "lock-файла нет" in capsys.readouterr().err
+    assert "no lock file" in capsys.readouterr().err
     assert _checkouts() == before
 
 

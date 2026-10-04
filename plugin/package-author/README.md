@@ -30,6 +30,7 @@ process-from-regulation ─┘                                              └�
 | `author-agent` | agents: identity, work, executor, skills, placement | `pkg_check`, `pkg_describe` |
 | `author-integration` | observer and skills of an integration, their tests and images | `pkg_test` |
 | `author-notification` | notification rules | `pkg_check` |
+| `author-screens` | screens of a package: `View` and `Component` from the blocks of set 1, `locales` and the dictionaries `i18n/<locale>.yaml` | `pkg_check`, `pkg_plan` |
 | `validate-and-fix` | the loop over findings `{code, file, line, path, message, hint}` | `pkg_check`, `pkg_test` |
 | `simulate-and-plan` | tests with coverage, the installation plan by section, applying on a yes | `pkg_test`, `pkg_plan`, `pkg_apply` |
 | `release-package` | version, changelog, tag on a yes, lock, plan and apply on a yes | `pkg_edit`, `pkg_test`, `pkg_plan`, `pkg_apply` |

@@ -1,23 +1,24 @@
 name: quickstart
 
-# SC-001: страница «Пакет за 10 минут» руководства исполняется как есть на чистом
-# runner без стенда и укладывается в 10 минут (ci/quickstart.py, S032). Страница
-# берётся из суперпроекта на ревизии, закреплённой в ci/quickstart-pin.json; шаг
-# «pin» падает, если команды или файлы страницы на голове ветки суперпроекта
-# разошлись с закреплёнными, — поэтому job идёт и по расписанию: правка руководства
-# без правки SDK ломает его, даже когда в SDK ничего не пушили.
+# SC-001: the guide's "Package in 10 minutes" page runs as is on a clean runner without
+# a server and fits in 10 minutes (ci/quickstart.py, S032). The page is taken from the
+# superproject at the revision pinned in ci/quickstart-pin.json; the "pin" step fails if
+# the page's commands or files at the head of the superproject branch diverged from the
+# pinned ones — which is why the job also runs on a schedule: editing the guide without
+# editing the SDK breaks it even when nothing was pushed to the SDK.
 #
-# Соседи — как в ci.yml: control-plane (та же vars.CONTROL_PLANE_REF, по умолчанию `main`)
-# и platform-auth-sdk рядом (плоская раскладка). Запасные адреса — публичного зеркала:
-# <owner>/control-plane, <owner>/platform-auth-sdk и зонтик <owner>/taimen; форк с другими
-# именами репозиториев задаёт переменные *_REPO. Страница клонирует соседей из локальных
-# зеркал, а не из опубликованного выпуска. Ключи деплоя не остаются в .git/config после
-# checkout (persist-credentials: false).
+# Neighbours as in ci.yml: control-plane (the same vars.CONTROL_PLANE_REF, `main` by
+# default) and platform-auth-sdk, laid out as in the umbrella (TAI-ADR-0064,
+# src/package_sdk/layout.json): sdk/package-sdk, services/control-plane, sdk/platform-auth-sdk. Fallback addresses are the public
+# mirror's: <owner>/control-plane, <owner>/platform-auth-sdk and the umbrella <owner>/taimen;
+# a fork with other repository names sets the *_REPO variables. The page clones the
+# neighbours from local mirrors, not from a published release. Deploy keys do not stay in
+# .git/config after checkout (persist-credentials: false).
 #
-# Публичный зонтик — проекция снимков со своей историей: закреплённого коммита в нём нет,
-# и страница сверяется по содержимому (план на голове ветки = закреплённый). Пока
-# страницы в зонтике нет, шаг `page` печатает page=missing и job завершается успешно с
-# пояснением (notice), остальные шаги пропускаются.
+# The public umbrella is a projection of snapshots with its own history: the pinned commit
+# is not there, and the page is checked by content (the plan at the branch head = the pinned
+# one). While the umbrella has no page, the `page` step prints page=missing and the job
+# succeeds with an explanation (notice); the other steps are skipped.
 on:
   push:
     branches: [main]
@@ -40,10 +41,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          path: package-sdk
+          path: sdk/package-sdk
           persist-credentials: false
       - id: pin
-        run: python3 package-sdk/ci/quickstart.py pin show >> "$GITHUB_OUTPUT"
+        run: python3 sdk/package-sdk/ci/quickstart.py pin show >> "$GITHUB_OUTPUT"
       - uses: actions/checkout@v4
         with:
           repository: ${{ vars.SUPERPROJECT_REPO || format('{0}/taimen', github.repository_owner) }}
@@ -53,14 +54,14 @@ jobs:
           fetch-depth: 0
           path: superproject
       - id: page
-        run: python3 package-sdk/ci/quickstart.py pin status --superproject superproject >> "$GITHUB_OUTPUT"
+        run: python3 sdk/package-sdk/ci/quickstart.py pin status --superproject superproject >> "$GITHUB_OUTPUT"
       - name: page not published
         if: steps.page.outputs.page == 'missing'
         env:
           PAGE: ${{ steps.page.outputs.path }}
         run: >-
-          echo "::notice title=quickstart::страница $PAGE ещё не опубликована в зонтике —
-          проверка быстрого старта пропущена"
+          echo "::notice title=quickstart::page $PAGE is not published in the umbrella yet —
+          the quickstart check is skipped"
       - uses: actions/checkout@v4
         if: steps.page.outputs.page == 'present'
         with:
@@ -68,24 +69,24 @@ jobs:
           ref: ${{ vars.CONTROL_PLANE_REF || 'main' }}
           ssh-key: ${{ secrets.CONTROL_PLANE_DEPLOY_KEY }}
           persist-credentials: false
-          path: control-plane
+          path: services/control-plane
       - uses: actions/checkout@v4
         if: steps.page.outputs.page == 'present'
         with:
           repository: ${{ vars.PLATFORM_AUTH_SDK_REPO || format('{0}/platform-auth-sdk', github.repository_owner) }}
           ssh-key: ${{ secrets.PLATFORM_AUTH_SDK_DEPLOY_KEY }}
           persist-credentials: false
-          path: platform-auth-sdk
-      # Без кэша: страница ставит инструмент с нуля, как у читателя.
+          path: sdk/platform-auth-sdk
+      # No cache: the page installs the tool from scratch, as a reader does.
       - uses: astral-sh/setup-uv@v4
         if: steps.page.outputs.page == 'present'
         with:
           enable-cache: false
       - name: pin
         if: steps.page.outputs.page == 'present'
-        run: python3 package-sdk/ci/quickstart.py pin check --superproject superproject
+        run: python3 sdk/package-sdk/ci/quickstart.py pin check --superproject superproject
       - name: quickstart
         if: steps.page.outputs.page == 'present'
         run: >-
-          python3 package-sdk/ci/quickstart.py run --superproject superproject
+          python3 sdk/package-sdk/ci/quickstart.py run --superproject superproject
           --neighbours . --db docker --timeout 600

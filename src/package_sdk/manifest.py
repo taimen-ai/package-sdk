@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import functools
+import json
 import re
 import urllib.parse
 import uuid
@@ -95,7 +96,7 @@ def parse_version(text: str) -> tuple[Version, int]:
     """Версия и число указанных частей (1.2 → 2): частичная версия в диапазоне — префикс."""
     match = _VERSION.match(text.strip())
     if not match:
-        raise PackageError(f"версия {text!r} — не SemVer (major.minor.patch)")
+        raise PackageError(f"version {text!r} is not SemVer (major.minor.patch)")
     major, minor, patch, pre = match.groups()
     given = 1 + (minor is not None) + (patch is not None)
     return Version(int(major), int(minor or 0), int(patch or 0), _pre(pre)), given
@@ -116,7 +117,7 @@ def _condition(text: str) -> list[tuple[str, Version]]:
         return []
     match = _CONDITION.match(text)
     if not match:
-        raise PackageError(f"условие {text!r} — не диапазон версий")
+        raise PackageError(f"constraint {text!r} is not a version range")
     op, value = match.group(1) or "", match.group(2)
     version, given = parse_version(value)
     if op == "^":
@@ -193,14 +194,14 @@ def variable_value_error(kind: str, value: str) -> str | None:
     if kind == "url":
         parsed = urllib.parse.urlparse(value)
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
-            return "нужен абсолютный URL http(s)://…"
+            return "an absolute http(s):// URL is required"
     elif kind in ("workspace", "project", "principal", "role"):
         try:
             uuid.UUID(value)
         except ValueError:
-            return f"нужен UUID ({kind} стенда)"
+            return f"a UUID is required (stand {kind})"
     elif kind == "integer" and not re.fullmatch(r"-?\d+", value.strip()):
-        return "нужно целое число"
+        return "an integer is required"
     return None
 
 
@@ -222,12 +223,12 @@ def missing_variable(package: Package, name: str) -> str:
     """Текст ошибки о незаданной переменной — с её описанием из манифеста."""
     declared = (package.spec.get("variables") or {}).get(name)
     if isinstance(declared, dict) and declared.get("description"):
-        example = f"; пример: {declared['example']}" if declared.get("example") else ""
+        example = f"; example: {declared['example']}" if declared.get("example") else ""
         return (
-            f"переменная {name} не задана — пакет {package.key}: {declared['description']} "
+            f"variable {name} is not set — package {package.key}: {declared['description']} "
             f"({declared.get('kind', 'string')}{example})"
         )
-    return f"переменная окружения {name} не задана (нужна пакету {package.key})"
+    return f"environment variable {name} is not set (required by package {package.key})"
 
 
 def _variable_rules(package: Package) -> tuple[list[str], list[str]]:
@@ -241,20 +242,20 @@ def _variable_rules(package: Package) -> tuple[list[str], list[str]]:
         # без spec.variables с ${…} — такая же ошибка, как необъявленная переменная
         if uses:
             errors.append(
-                f"{where}: variable_undeclared: переменные не объявлены в spec.variables: "
+                f"{where}: variable_undeclared: variables not declared in spec.variables: "
                 f"{', '.join(sorted(uses))}"
             )
         return errors, warnings
     for name in sorted(set(uses) - set(declared)):
         refs = ", ".join(sorted({o.ref for o in uses[name]}))
         errors.append(
-            f"{where}: variable_undeclared: ${{{name}}} использована ({refs}), но не объявлена "
-            "в spec.variables"
+            f"{where}: variable_undeclared: ${{{name}}} is used ({refs}) but not declared "
+            "in spec.variables"
         )
     for name in sorted(set(declared) - set(uses)):
         errors.append(
-            f"{where}: variable_unused: {name} объявлена в spec.variables, но ни один объект "
-            "пакета её не использует"
+            f"{where}: variable_unused: {name} is declared in spec.variables, but no object "
+            "of the package uses it"
         )
     for name, spec in sorted(declared.items()):
         if not isinstance(spec, dict):
@@ -271,8 +272,8 @@ def _variable_rules(package: Package) -> tuple[list[str], list[str]]:
                     )
         if spec.get("required") is True and "default" in spec:
             warnings.append(
-                f"{where}: variable_required_with_default: {name}: required: true и default "
-                "вместе — default делает переменную необязательной, уберите одно из двух"
+                f"{where}: variable_required_with_default: {name}: required: true and default "
+                "together — default makes the variable optional, remove one of the two"
             )
     return errors, warnings
 
@@ -319,8 +320,8 @@ def _engines_rules(package: Package, local: dict[str, str]) -> tuple[list[str], 
         current = local.get(component)
         if current is not None and not satisfies(current, str(spec)):
             warnings.append(
-                f"{where}: engines_mismatch: пакет объявляет {component} {spec}, а проверка "
-                f"и тесты идут кодом {component} {current}"
+                f"{where}: engines_mismatch: the package declares {component} {spec}, "
+                f"but the check and tests run on {component} {current}"
             )
     return errors, warnings
 
@@ -340,8 +341,8 @@ def _requires_rules(package: Package, versions: dict[str, str]) -> list[str]:
         ok = satisfies(versions[key], spec)
         if not ok:
             errors.append(
-                f"{where}: requires_version_mismatch: нужен {key} {spec}, в установке {key} "
-                f"{versions[key]}"
+                f"{where}: requires_version_mismatch: requires {key} {spec}, "
+                f"the installation has {key} {versions[key]}"
             )
     return errors
 
@@ -490,8 +491,8 @@ def _knowledge_rules(package: Package, visible: list[Obj]) -> tuple[list[str], l
     if declared is None:
         if use:
             warnings.append(
-                f"{where}: knowledge_undeclared: процессы пакета обращаются к памяти "
-                f"(виды: {', '.join(sorted(use.kinds)) or '—'}), а spec.knowledge не объявлен"
+                f"{where}: knowledge_undeclared: the package processes access memory (kinds: "
+                f"{', '.join(sorted(use.kinds)) or '—'}), but spec.knowledge is not declared"
             )
         return errors, warnings
     packs = _knowledge_packs(visible)
@@ -505,8 +506,8 @@ def _knowledge_rules(package: Package, visible: list[Obj]) -> tuple[list[str], l
             continue
         if ref not in packs:
             errors.append(
-                f"{where}: knowledge_unknown: онтология {value} не объявлена KnowledgePack "
-                f"ни в пакете {package.key}, ни в его requires"
+                f"{where}: knowledge_unknown: ontology {value} is not declared as a KnowledgePack "
+                f"either in package {package.key} or in its requires"
             )
             continue
         terms = _ontology_terms(ref, packs, set())
@@ -521,20 +522,20 @@ def _knowledge_rules(package: Package, visible: list[Obj]) -> tuple[list[str], l
     unknown = [
         (label, name, refs)
         for label, table, known in (
-            ("вид", use.kinds, kinds),
-            ("связь", use.relations, relations),
+            ("kind", use.kinds, kinds),
+            ("relation", use.relations, relations),
         )
         for name, refs in sorted(table.items())
         if name not in known
     ]
     for label, name, refs in unknown:
         message = (
-            f"{where}: knowledge_term_unknown: {label} {name!r} ({', '.join(refs)}) нет в "
-            f"онтологиях spec.knowledge ({', '.join(declared) or '—'})"
+            f"{where}: knowledge_term_unknown: {label} {name!r} ({', '.join(refs)}) is not in the "
+            f"spec.knowledge ontologies ({', '.join(declared) or '—'})"
         )
         if opaque:
             # содержимое части онтологий не видно — решает память при регистрации
-            warnings.append(message + f"; не проверено против {', '.join(opaque)}")
+            warnings.append(message + f"; not checked against {', '.join(opaque)}")
         else:
             errors.append(message)
     return errors, warnings
@@ -576,8 +577,8 @@ def _pack_rules(package: Package, visible: list[Obj]) -> list[str]:
         name = obj.spec.get("name")
         if name != obj.key:
             errors.append(
-                f"{where}: knowledge_pack_key: key {obj.key!r} — имя онтологии spec.name "
-                f"({name!r}): у KnowledgePack они совпадают"
+                f"{where}: knowledge_pack_key: key {obj.key!r} — the ontology name spec.name "
+                f"({name!r}): for a KnowledgePack they are the same"
             )
         for base in obj.spec.get("extends") or []:
             base_name, _, version = str(base).partition("@")
@@ -586,8 +587,8 @@ def _pack_rules(package: Package, visible: list[Obj]) -> list[str]:
                 continue
             if major is None or (base_name, major) not in packs:
                 errors.append(
-                    f"{where}: knowledge_extends_unknown: extends {base} — такой онтологии нет "
-                    f"ни в пакете {package.key}, ни в его requires"
+                    f"{where}: knowledge_extends_unknown: extends {base} — no such ontology "
+                    f"either in package {package.key} or in its requires"
                 )
     return errors
 
@@ -603,9 +604,9 @@ def _pack_conflicts(installation: Installation) -> list[str]:
         first = seen.setdefault(ident, obj)
         if first is not obj and first.spec != obj.spec:
             errors.append(
-                f"{_rel(obj.path)}: knowledge_pack_conflict: {ident[0]}@{ident[1]} уже "
-                f"объявлена в {_rel(first.path)} с другим содержимым — версия онтологии "
-                "неизменяема, поднимите version"
+                f"{_rel(obj.path)}: knowledge_pack_conflict: {ident[0]}@{ident[1]} is already "
+                f"declared in {_rel(first.path)} with different content — an ontology version "
+                "is immutable, bump version"
             )
     return errors
 
@@ -620,8 +621,8 @@ def _installation_knowledge(installation: Installation) -> list[str]:
             if name in PLATFORM_ONTOLOGIES or (name, major) in packs:
                 continue
             warnings.append(
-                f"knowledge: {value} для {entry.get('workspace')} — нет KnowledgePack в пакетах "
-                "установки: онтология должна уже быть зарегистрирована на стенде"
+                f"knowledge: {value} for {entry.get('workspace')} — no KnowledgePack "
+                "in the installation packages: the ontology must already be registered on the stand"
             )
     return warnings
 
@@ -644,6 +645,9 @@ def load_for_describe(directory: Path) -> tuple[Package, Installation | None, st
 
 def describe(package: Package, installation: Installation | None = None) -> dict[str, Any]:
     """Что нужно стенду, чтобы поставить пакет: выводится из объектов, значений секретов нет."""
+    # settings → screens → source → manifest: импорт здесь, а не в заголовке модуля
+    from package_sdk import settings as package_settings
+
     spec = package.spec
     packages = installation.packages if installation else [package]
     versions = {p.key: str(p.spec.get("version")) for p in packages}
@@ -711,6 +715,9 @@ def describe(package: Package, installation: Installation | None = None) -> dict
             for key, rng in package.requirements
         ],
         "variables": variables,
+        # настройки пакета (TAI-ADR-0067) — рядом с переменными: их меняет администратор
+        # в живой системе, а не установка
+        "settings": [item for owner in packages for item in package_settings.describe(owner)],
         "agents": agents,
         "knowledge": {
             "declared": list(spec.get("knowledge") or []),
@@ -763,50 +770,64 @@ def env_example(info: dict[str, Any]) -> str:
 def format_describe(info: dict[str, Any], problem: str | None = None) -> str:
     out = [f"{info['package']} {info['version']} — {info['displayName']}"]
     if info["license"]:
-        out.append(f"лицензия: {info['license']}")
+        out.append(f"license: {info['license']}")
     if info["authors"]:
-        out.append(f"авторы: {', '.join(info['authors'])}")
+        out.append(f"authors: {', '.join(info['authors'])}")
     out.append("")
-    out.append("совместимость:")
-    out += [f"  {name} {rng}" for name, rng in info["engines"].items()] or ["  (не объявлена)"]
-    out.append("зависимости:")
+    out.append("compatibility:")
+    out += [f"  {name} {rng}" for name, rng in info["engines"].items()] or ["  (not declared)"]
+    out.append("dependencies:")
     out += [
         f"  {r['package']} {r['version'] or '*'}"
-        + (f" (найдена {r['resolved']})" if r["resolved"] else " (не найдена рядом)")
+        + (f" (found {r['resolved']})" if r["resolved"] else " (not found nearby)")
         for r in info["requires"]
-    ] or ["  (нет)"]
+    ] or ["  (none)"]
     if problem:
         out.append(f"  ! {problem}")
-    out.append("переменные:")
+    out.append("variables:")
     for v in info["variables"]:
-        flag = "обязательна" if v["required"] else f"по умолчанию {v['default']!r}"
+        flag = "required" if v["required"] else f"default {v['default']!r}"
         if not v["declared"]:
-            flag = "НЕ ОБЪЯВЛЕНА"
+            flag = "NOT DECLARED"
         out.append(f"  {v['name']} [{v['kind'] or '?'}, {flag}] ({v['package']})")
         if v["description"]:
             out.append(f"      {v['description']}")
     if not info["variables"]:
-        out.append("  (нет)")
-    out.append("агенты и узлы:")
+        out.append("  (none)")
+    out.append("settings (changed by an administrator in the live system):")
+    for f in info["settings"]:
+        flags = [f["type"] or "?"]
+        if f["ref"]:
+            flags.append(f"ref {f['ref']}")
+        if f["hasDefault"]:
+            flags.append(f"default {json.dumps(f['default'], ensure_ascii=False)}")
+        if f["required"]:
+            flags.append("required")
+        if f["enum"]:
+            flags.append("one of " + ", ".join(str(v) for v in f["enum"]))
+        out.append(f"  {f['name']} [{', '.join(flags)}] ({f['package']})")
+    if not info["settings"]:
+        out.append("  (none)")
+    out.append("agents and nodes:")
     for a in info["agents"]:
         labels = ", ".join(a["nodeLabels"]) or "—"
         secrets = ", ".join(a["nodeSecrets"]) or "—"
         where = (
-            "без процесса (только личность)"
+            "no process (identity only)"
             if a["placement"] == "none"
-            else f"метки {labels}; секреты {secrets}"
+            else f"labels {labels}; secrets {secrets}"
         )
-        image = f", образ {a['image']}" if a["image"] else ""
+        image = f", image {a['image']}" if a["image"] else ""
         owner = f" [{a['package']}]" if a["package"] != info["package"] else ""
         out.append(f"  {a['agent']}{owner} ({a['executor'] or '—'}{image}): {where}")
     if not info["agents"]:
-        out.append("  (нет)")
+        out.append("  (none)")
     k = info["knowledge"]
-    out.append("онтологии:")
-    out.append(f"  объявлены: {', '.join(k['declared']) or '—'}")
-    out.append(f"  в пакетах: {', '.join(k['provided']) or '—'}")
-    out.append(f"  виды процессов: {', '.join(k['used']['kinds']) or '—'}")
-    out.append("объекты: " + ", ".join(f"{kind} {n}" for kind, n in info["objects"].items()))
+    out.append("ontologies:")
+    out.append(f"  declared: {', '.join(k['declared']) or '—'}")
+    out.append(f"  in packages: {', '.join(k['provided']) or '—'}")
+    out.append(f"  process kinds: {', '.join(k['used']['kinds']) or '—'}")
+    out.append("objects: " + ", ".join(f"{kind} {n}" for kind, n in info["objects"].items()))
     return "\n".join(out) + "\n"
 
 

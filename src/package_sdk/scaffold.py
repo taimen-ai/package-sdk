@@ -25,8 +25,10 @@ from functools import cache
 from pathlib import Path
 from typing import Any
 
+from package_sdk import layout as layout_module
 from package_sdk import schema as schema_module
 from package_sdk import yaml12
+from package_sdk.layout import Layout
 from package_sdk.model import (
     API_VERSION,
     CATALOG_KINDS,
@@ -45,6 +47,7 @@ SPEC_DEFS = {
     "KnowledgePack": "knowledge-pack",
     "WorkspaceType": "workspaceTypeSpec",
     "Capability": "capabilitySpec",
+    "ConnectionType": "connectionTypeSpec",
     "Role": "roleSpec",
     "Skill": "skillSpec",
     "ArtifactType": "artifactTypeSpec",
@@ -101,6 +104,16 @@ def minimal_spec(kind: str, key: str) -> dict[str, Any]:
         return {"displayName": name}
     if kind == "Capability":
         return {"description": f"{name}: what an executor with this capability can do"}
+    if kind == "ConnectionType":
+        # ключ подключения по умолчанию — ключ типа: его называют агенты пакета (connections)
+        return {
+            "version": 1,
+            "displayName": name,
+            "auth": ["token"],
+            "accountField": {"title": "Account", "pattern": "^[a-z0-9.-]+$"},
+            "settingsSchema": {"type": "object", "properties": {}},
+            "defaultKey": key,
+        }
     if kind == "Role":
         return {"name": name, "description": "Who in the organization performs this role"}
     if kind == "Skill":
@@ -187,7 +200,7 @@ def minimal_spec(kind: str, key: str) -> dict[str, Any]:
             },
             "dedupKeyTemplate": "control-plane:event:{{event.id}}",
         }
-    raise PackageError(f"вид {kind!r} — не объект каталога; виды: {', '.join(CATALOG_KINDS)}")
+    raise PackageError(f"kind {kind!r} is not a catalog object; kinds: {', '.join(CATALOG_KINDS)}")
 
 
 def process_test(key: str) -> dict[str, Any]:
@@ -225,7 +238,7 @@ def resolve_kind(value: str) -> str:
     lowered = value.lower().replace("_", "-")
     if lowered in folders:
         return folders[lowered]
-    raise PackageError(f"вид {value!r} неизвестен; виды: {', '.join(CATALOG_KINDS)}")
+    raise PackageError(f"unknown kind {value!r}; kinds: {', '.join(CATALOG_KINDS)}")
 
 
 # Тег выпуска компонента платформы: v<major>.<minor>.<patch>[суффикс].
@@ -386,7 +399,7 @@ def _write_all(plan: list[tuple[Path, str]]) -> list[Path]:
     existing = [path for path, _text in plan if path.exists()]
     if existing:
         raise PackageError(
-            "уже есть — заготовка не перезаписывает файлы: "
+            "already exist — the scaffold does not overwrite files: "
             + ", ".join(_rel(path) for path in existing)
         )
     for path, text in plan:
@@ -414,11 +427,11 @@ def _plan_object(package_dir: Path, kind: str, key: str) -> list[tuple[Path, str
     kind = resolve_kind(kind)
     pattern = r"^[a-z][a-z0-9_.-]{0,99}$" if kind == "Skill" else KEY.pattern
     if not re.match(pattern, key):
-        raise PackageError(f"ключ {key!r}: строчные латинские буквы, цифры и дефис")
+        raise PackageError(f"key {key!r}: lowercase Latin letters, digits and hyphens")
     if kind == "Process" and len(key) > PROCESS_KEY_MAX:
         raise PackageError(
-            f"ключ процесса {key!r} длиннее {PROCESS_KEY_MAX}: рядом заводятся "
-            f"{key}-process и {key}-owner, а ключ объекта — до 63 символов"
+            f"process key {key!r} is longer than {PROCESS_KEY_MAX}: {key}-process and "
+            f"{key}-owner are created alongside, and an object key is up to 63 characters"
         )
     path = package_dir / FOLDERS[kind] / f"{key}.yaml"
     plan = [(path, render_object(kind, key, path))]
@@ -460,7 +473,7 @@ def add(package_dir: Path, kind: str, key: str) -> Scaffolded:
     add его не трогает и возвращает предупреждение. Возвращает созданные и изменённые
     файлы."""
     if not (package_dir / "package.yaml").exists():
-        raise PackageError(f"{_rel(package_dir)}: нет package.yaml — сначала package-sdk init")
+        raise PackageError(f"{_rel(package_dir)}: no package.yaml — run package-sdk init first")
     created = _write_all(_plan_object(package_dir, kind, key))
     updated = [_refresh_docs(package_dir)]
     warnings: list[str] = []
@@ -469,10 +482,10 @@ def add(package_dir: Path, kind: str, key: str) -> Scaffolded:
         updated.append(enabled)
         if enabled is None and not database_enabled(package_dir):
             warnings.append(
-                f"{_rel(package_dir / WORKFLOW_PATH)}: блок базы правили руками, и add его "
-                "не тронул — включите базу PostgreSQL в workflow вручную (сервис postgres и "
-                "PACKAGE_SDK_SANDBOX_DATABASE_URL): без неё сценарии правил и типов задач не "
-                "исполняются, и CI красный"
+                f"{_rel(package_dir / WORKFLOW_PATH)}: the database block was edited by hand, "
+                "and add left it alone — enable the PostgreSQL database in the workflow manually "
+                "(postgres service and PACKAGE_SDK_SANDBOX_DATABASE_URL): without it scenarios "
+                "of rules and task types do not run, and CI is red"
             )
     return Scaffolded(created, updated=[path for path in updated if path], warnings=warnings)
 
@@ -536,8 +549,7 @@ WORKFLOW = """\
 # scenarios in the sandbox run by the core code) and the generated README section.
 #
 # package-sdk runs all of it with the code of the core, so the components of the platform
-# are cloned next to it as sibling directories ({platform_dir}/), at revisions of one
-# platform release. They are never installed from the public package index: no such names
+{placement}. They are never installed from the public package index: no such names
 # there (dependency confusion). The package is checked out into a directory named by its
 # key ({key}/): check, test and docs require the directory name to match the key.
 name: package
@@ -574,23 +586,12 @@ jobs:
           path: {key}
           persist-credentials: false
       - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e  # v6
-      - name: package-sdk and the components of the platform as sibling directories
+      - name: package-sdk and the components of the platform {step}
         env:
           GIT_TERMINAL_PROMPT: "0"  # a missing repository fails, not asks for a login
         run: |
           mkdir -p {platform_dir} && cd {platform_dir}
-          clone() {{  # clone <name> <ref>: a tag or a full commit SHA
-            url="$PLATFORM_GIT/$1.git"
-            git clone --quiet --filter=blob:none --no-checkout "$url" "$1" || {{
-              echo "::error::cannot clone $url: no such repository or no access (PLATFORM_GIT)"
-              exit 1
-            }}
-            git -C "$1" checkout --quiet --detach "$2" || {{
-              echo "::error::$url has no revision $2"
-              exit 1
-            }}
-          }}
-{clones}{install_comment}          uv tool install "./package-sdk[{extras}]"{with_pytest}
+{clone}{clones}{install_comment}          uv tool install "./{sdk_dir}[{extras}]"{with_pytest}
           echo "$(uv tool dir --bin)" >> "$GITHUB_PATH"
       - name: package-sdk test
         run: package-sdk test .
@@ -598,6 +599,44 @@ jobs:
       - name: The generated README section is up to date
         run: package-sdk docs . --check
         working-directory: {key}
+"""
+
+# Плоская раскладка — прежний текст workflow байт в байт: у авторов, чей package.yml
+# сделан до манифеста раскладки, перегенерация на ней ничего не меняет.
+FLAT_PLACEMENT = (
+    "# are cloned next to it as sibling directories ({platform_dir}/), at revisions of one\n"
+    "# platform release"
+)
+LAYOUT_PLACEMENT = (
+    "# are cloned into {platform_dir}/ in the layout of the installation this file was made\n"
+    "# from (package-sdk workflow regenerates it by that layout), at revisions of one\n"
+    "# platform release"
+)
+FLAT_CLONE = """\
+          clone() {  # clone <name> <ref>: a tag or a full commit SHA
+            url="$PLATFORM_GIT/$1.git"
+            git clone --quiet --filter=blob:none --no-checkout "$url" "$1" || {
+              echo "::error::cannot clone $url: no such repository or no access (PLATFORM_GIT)"
+              exit 1
+            }
+            git -C "$1" checkout --quiet --detach "$2" || {
+              echo "::error::$url has no revision $2"
+              exit 1
+            }
+          }
+"""
+LAYOUT_CLONE = """\
+          clone() {  # clone <name> <path> <ref>: the path in the layout; a tag or a full SHA
+            url="$PLATFORM_GIT/$1.git"
+            git clone --quiet --filter=blob:none --no-checkout "$url" "$2" || {
+              echo "::error::cannot clone $url: no such repository or no access (PLATFORM_GIT)"
+              exit 1
+            }
+            git -C "$2" checkout --quiet --detach "$3" || {
+              echo "::error::$url has no revision $3"
+              exit 1
+            }
+          }
 """
 
 POSTGRES = """\
@@ -652,7 +691,14 @@ def needs_database(package_dir: Path) -> bool:
     return False
 
 
-def workflow(*, key: str, integration: bool, database: bool = False) -> str:
+def workflow(
+    *,
+    key: str,
+    integration: bool,
+    database: bool = False,
+    layout: Layout | None = None,
+    extra_with: str = "",
+) -> str:
     """Workflow CI пакета (``package.yml`` в каталоге workflow): пирамида
     ``package-sdk test`` и ``package-sdk docs --check``.
 
@@ -666,19 +712,39 @@ def workflow(*, key: str, integration: bool, database: bool = False) -> str:
     адрес, откуда клонировать компоненты (``PLATFORM_GIT`` — владелец репозитория SDK), —
     из установки, в которой выполнен init (:func:`revision`). ``database`` — сервис
     PostgreSQL для сценариев правил и типов задач (:func:`needs_database`); без него блок
-    сервиса лежит в файле закомментированным."""
+    сервиса лежит в файле закомментированным.
+
+    Компоненты раскладываются в ``.platform/`` по манифесту раскладки установки
+    (``layout``, по умолчанию — :func:`package_sdk.layout.current`): в плоской раскладке
+    каталог — имя компонента, после переезда — путь с сегментами (``services/control-plane``),
+    чтобы path-зависимости SDK и ядра разрешались так же, как в установке (TAI-ADR-0064
+    правило 1). Адрес клона — всегда по имени. ``extra_with`` — дописанные автором
+    ``--with`` строки установки, которые сохраняет перегенерация (:func:`regenerate`)."""
+    layout = layout or layout_module.current()
     components = [name for name in WORKFLOW_COMPONENTS if integration or name != "skill-sdk"]
+    flat = all(layout.path(name) == name for name in components)
     names = [WORKFLOW_COMPONENTS[name] for name in components]
     sdk = revision("package-sdk").repository
     platform = sdk.rsplit("/", 1)[0] if sdk else ""
     refs = [f'PLATFORM_GIT: "{platform}"']
     refs += [f'{WORKFLOW_COMPONENTS[name]}: "{revision(name).ref or ""}"' for name in components]
-    clones = "".join(
-        f'          clone {name} "${WORKFLOW_COMPONENTS[name]}"\n' for name in components
-    )
+    if flat:
+        clones = "".join(
+            f'          clone {name} "${WORKFLOW_COMPONENTS[name]}"\n' for name in components
+        )
+    else:
+        clones = "".join(
+            f'          clone {name} {layout.path(name)} "${WORKFLOW_COMPONENTS[name]}"\n'
+            for name in components
+        )
+    placement = FLAT_PLACEMENT if flat else LAYOUT_PLACEMENT
     return WORKFLOW.format(
         key=key,
         platform_dir=WORKFLOW_PLATFORM_DIR,
+        placement=placement.format(platform_dir=WORKFLOW_PLATFORM_DIR),
+        step="as sibling directories" if flat else "in the layout of the installation",
+        clone=FLAT_CLONE if flat else LAYOUT_CLONE,
+        sdk_dir=layout.path("package-sdk"),
         services=_services(database),
         refs=_indent("\n".join(refs), 6),
         database=_indent(DATABASE_URL, 6, comment=not database),
@@ -690,7 +756,7 @@ def workflow(*, key: str, integration: bool, database: bool = False) -> str:
             else ""
         ),
         extras="sandbox,skills,connector" if integration else "sandbox",
-        with_pytest=" --with pytest" if integration else "",
+        with_pytest=(" --with pytest" if integration else "") + extra_with,
     )
 
 
@@ -723,6 +789,77 @@ def enable_database(package_dir: Path) -> Path | None:
     )
     path.write_text(text, encoding="utf-8")
     return path
+
+
+# Строка установки SDK в workflow; хвост после пути — --with, которые дописывает автор
+INSTALL_LINE = re.compile(r'^ *uv tool install "\./[^"\[]+\[[^\]]*\]"(?P<tail>.*)$', re.M)
+
+
+@dataclass
+class Regenerated:
+    """Итог перегенерации workflow: файл, изменился ли он (или изменился бы при --check),
+    раскладка, по которой он собран, и предупреждения автору."""
+
+    path: Path
+    changed: bool
+    layout: Layout
+    warnings: list[str] = field(default_factory=list)
+
+
+def regenerate(
+    package_dir: Path, *, layout: Layout | None = None, check: bool = False
+) -> Regenerated:
+    """Перегенерировать workflow CI пакета (``package.yml``) по манифесту раскладки
+    установки — для авторов, у которых workflow уже есть (TAI-ADR-0064, фаза 0).
+
+    Параметры берутся из пакета и прежнего файла: ключ — из ``package.yaml``; код
+    интеграции — каталог ``integration/`` или skill-sdk в прежнем workflow; база —
+    включена в прежнем workflow или нужна сценариям (:func:`needs_database`); дописанные
+    автором ``--with`` строки установки сохраняются. Ревизии и адрес компонентов — из этой
+    установки, как у init: раскладку и ревизии одной установки не смешивают. Остальные
+    ручные правки файла не сохраняются. ``check`` — только сравнить, не записывая."""
+    layout = layout or layout_module.current()
+    manifest_path = package_dir / "package.yaml"
+    if not manifest_path.is_file():
+        raise PackageError(f"{_rel(package_dir)}: no package.yaml")
+    document = _read_yaml(manifest_path)
+    key = document.get("key") if isinstance(document, dict) else None
+    if not isinstance(key, str) or not KEY.match(key):
+        raise PackageError(f"{_rel(manifest_path)}: no package key")
+    path = package_dir / WORKFLOW_PATH
+    previous = path.read_text(encoding="utf-8") if path.is_file() else None
+    integration = (package_dir / "integration").is_dir() or (
+        previous is not None and WORKFLOW_COMPONENTS["skill-sdk"] in previous
+    )
+    database = (previous is not None and database_enabled(package_dir)) or needs_database(
+        package_dir
+    )
+    extra_with = ""
+    found = INSTALL_LINE.search(previous or "")
+    if found:
+        extra_with = found.group("tail").replace(" --with pytest", "", 1).rstrip()
+    text = workflow(
+        key=key, integration=integration, database=database, layout=layout, extra_with=extra_with
+    )
+    warnings: list[str] = []
+    if previous is None:
+        warnings.append(f"{_rel(path)} did not exist: created as package-sdk init would")
+    elif found is None:
+        warnings.append(
+            f"{_rel(path)} has no 'uv tool install' line of package-sdk: the file was not made "
+            "by package-sdk init — compare the result with the previous file"
+        )
+    empty = [line.split(":", 1)[0].strip() for line in text.splitlines() if line.endswith(': ""')]
+    if empty:
+        warnings.append(
+            f"not known in this installation: {', '.join(empty)} — set them in the env of the "
+            "job, or the job stops with an error"
+        )
+    changed = text != previous
+    if changed and not check:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+    return Regenerated(path, changed, layout, warnings)
 
 
 # .package-sdk/ — планы и установки MCP-сервера автора (package-sdk mcp), не для git.
@@ -855,11 +992,11 @@ def init(
     key = key or package_name(directory)
     if not KEY.match(key) or len(key) > PROCESS_KEY_MAX:
         raise PackageError(
-            f"ключ пакета {key!r}: строчные латинские буквы, цифры и дефис, до "
-            f"{PROCESS_KEY_MAX} символов (--key)"
+            f"package key {key!r}: lowercase Latin letters, digits and hyphens, up to "
+            f"{PROCESS_KEY_MAX} characters (--key)"
         )
     if image and not integration:
-        raise PackageError("--image собирает образ интеграции — нужен и --integration")
+        raise PackageError("--image builds the integration image — --integration is required too")
     name = display_name or title(key)
     manifest_path = directory / "package.yaml"
     spec: dict[str, Any] = {"version": "0.1.0", "displayName": name}

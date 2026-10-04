@@ -95,11 +95,11 @@ def _source(package_dir: Path, source: str | None) -> str:
     candidate = source or ("integration" if (package_dir / "integration").is_dir() else ".")
     if not (package_dir / candidate / "pyproject.toml").is_file():
         raise PackageError(
-            f"{_rel(package_dir / candidate)}: нет pyproject.toml — укажите код интеграции "
-            "(--source) или создайте его: package-sdk init --integration"
+            f"{_rel(package_dir / candidate)}: no pyproject.toml — point to the integration code "
+            "(--source) or create it: package-sdk init --integration"
         )
     if not (package_dir / candidate / "src").is_dir():
-        raise PackageError(f"{_rel(package_dir / candidate)}: код интеграции ожидается в src/")
+        raise PackageError(f"{_rel(package_dir / candidate)}: integration code is expected in src/")
     return "" if candidate in (".", "./") else candidate.strip("/") + "/"
 
 
@@ -136,7 +136,7 @@ def _key(package_dir: Path) -> str:
 
 def _base(base: str | None, arg: str) -> tuple[str, str, str]:
     if base is not None and not IMAGE.match(base):
-        raise PackageError(f"--base {base!r}: не ссылка на образ")
+        raise PackageError(f"--base {base!r}: not an image reference")
     if base:
         return f"={base}", f" --base {base}", ""
     return "", "", f" --build-arg {arg}=<image>"
@@ -171,7 +171,7 @@ def render_observer(
 ) -> str:
     """Dockerfile наблюдателя без обращения к файлам пакета (init пишет его до файлов)."""
     if entrypoint is not None and not ENTRYPOINT.match(entrypoint):
-        raise PackageError(f"--entrypoint {entrypoint!r}: нужен вид модуль:функция")
+        raise PackageError(f"--entrypoint {entrypoint!r}: expected the form module:function")
     default, base_arg, build_arg = _base(base, "BASE_IMAGE")
     return OBSERVER.format(
         key=key,
@@ -194,10 +194,10 @@ def skills_dockerfile(
     dockerfile: str = "Dockerfile.skills",
 ) -> str:
     if not modules:
-        raise PackageError("--modules: хотя бы один модуль или entrypoint скиллов")
+        raise PackageError("--modules: at least one module or skill entrypoint")
     for module in modules:
         if not MODULE.match(module):
-            raise PackageError(f"--modules {module!r}: модуль или модуль:функция")
+            raise PackageError(f"--modules {module!r}: module or module:function")
     prefix = _source(package_dir, source)
     default, base_arg, build_arg = _base(base, "RUNNER_IMAGE")
     return SKILLS.format(
@@ -215,32 +215,33 @@ def skills_dockerfile(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="package-sdk image",
-        description="Dockerfile образа интеграции пакета: наблюдатель или хост скиллов",
+        description="Dockerfile of a package integration image: observer or skill host",
     )
     sub = parser.add_subparsers(dest="kind", required=True)
     for kind in ("observer", "skills"):
-        cmd = sub.add_parser(kind, help=f"Dockerfile образа {kind}")
-        cmd.add_argument("--package", type=Path, default=Path("."), help="каталог пакета")
+        cmd = sub.add_parser(kind, help=f"Dockerfile of the {kind} image")
+        cmd.add_argument("--package", type=Path, default=Path("."), help="package directory")
         cmd.add_argument(
-            "--source", help="python-проект интеграции в пакете (по умолчанию integration/)"
+            "--source",
+            help="python project of the integration in the package (default integration/)",
         )
         cmd.add_argument(
             "--base",
-            help="базовый образ поставки (иначе --build-arg при сборке); "
-            + ("наблюдателя" if kind == "observer" else "раннера"),
+            help="base image of the delivery (otherwise --build-arg at build time); "
+            + ("observer" if kind == "observer" else "runner"),
         )
         cmd.add_argument(
             "--out",
             type=Path,
-            help="куда записать; рядом, в каталоге пакета, пишется .dockerignore",
+            help="where to write; .dockerignore is written alongside, in the package directory",
         )
         if kind == "observer":
             cmd.add_argument(
-                "--entrypoint", help="наблюдатель модуль:функция — проверка при сборке"
+                "--entrypoint", help="observer module:function — checked at build time"
             )
         else:
             cmd.add_argument(
-                "--modules", required=True, help="модули или entrypoint'ы скиллов через запятую"
+                "--modules", required=True, help="comma-separated modules or skill entrypoints"
             )
     args = parser.parse_args(argv)
     try:
@@ -261,22 +262,23 @@ def main(argv: list[str] | None = None) -> int:
             )
         ignore = dockerignore(args.package, source=args.source)
     except PackageError as error:
-        print("ошибка:", error, file=sys.stderr)
+        print("error:", error, file=sys.stderr)
         return 1
     if not args.out:
         print(text, end="")
         return 0
     args.out.write_text(text, encoding="utf-8")
-    print("записан", _rel(args.out))
+    print("written", _rel(args.out))
     ignore_path = args.package / ".dockerignore"
     if not ignore_path.exists():
         ignore_path.write_text(ignore, encoding="utf-8")
-        print("записан", _rel(ignore_path))
+        print("written", _rel(ignore_path))
     elif ignore_path.read_text(encoding="utf-8") != ignore:
         print(
-            f"предупреждение: {_rel(ignore_path)} уже есть и отличается от нужного — "
-            "в контекст сборки должен идти только код интеграции (package-sdk image без --out "
-            "покажет Dockerfile, dockerignore — функция package_sdk.image.dockerignore)",
+            f"warning: {_rel(ignore_path)} already exists and differs from the required one — "
+            "only the integration code must go into the build context (package-sdk image "
+            "without --out shows the Dockerfile, the dockerignore — function "
+            "package_sdk.image.dockerignore)",
             file=sys.stderr,
         )
     return 0

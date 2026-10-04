@@ -34,7 +34,21 @@ KINDS = {
     "Agent": ("agentSpec", "AgentSpec"),
 }
 # (kind, dotted path) → task in which the core accepts the field
-PENDING = {("Agent", "executor.image"): "TASK-000940 (S016, CP-ADR-0073 amendment)"}
+PENDING = {
+    ("Agent", "executor.image"): "TASK-000940 (S016, CP-ADR-0073 amendment)",
+    # the core accepts it on its branch feature/integrations-connections (CP-ADR-0079 §8)
+    ("Agent", "connections"): "TASK-001146 (CP-ADR-0079 §8, feature integrations-connections)",
+}
+# kind → (definition, request schema of the core once the slice has it, task): the kind is in
+# the format, the pinned core has no route for it yet. When the slice gains the request schema,
+# the kind moves to KINDS.
+PENDING_KINDS = {
+    "ConnectionType": (
+        "connectionTypeSpec",
+        "ConnectionTypeSpec",
+        "TASK-001146 (CP-ADR-0079 §2, feature integrations-connections)",
+    ),
+}
 
 
 def component(node: dict[str, Any]) -> dict[str, Any]:
@@ -73,9 +87,33 @@ def test_pending_fields_are_still_pending() -> None:
     assert "image" not in executor_core.get("properties", {}), (
         "the core accepts executor.image now: drop it from PENDING and refresh the slice"
     )
+    assert "connections" not in COMPONENTS["AgentSpec"].get("properties", {}), (
+        "the core accepts Agent.spec.connections now: drop it from PENDING"
+    )
+
+
+@pytest.mark.parametrize("kind", sorted(PENDING_KINDS))
+def test_pending_kinds_are_still_pending(kind: str) -> None:
+    definition, request, _task = PENDING_KINDS[kind]
+    assert definition in schema.load(schema.OBJECT)["$defs"]
+    assert request not in COMPONENTS, (
+        f"the slice has {request} now: move {kind} from PENDING_KINDS to KINDS"
+    )
 
 
 def test_knowledge_pack_is_forwarded_as_is() -> None:
     request = COMPONENTS["KnowledgePackRegisterRequest"]
     assert request.get("additionalProperties") is True
     assert {"name", "scope", "version"} <= set(request["properties"])
+
+
+def test_executor_roles_take_what_the_core_takes() -> None:
+    # CP-ADR-0048 А1: up to 20 role slugs of the core's form, no repeats
+    objects = schema.load(schema.OBJECT)["$defs"]
+    ours = objects["taskTypeSpec"]["properties"]["executorRoles"]
+    core = COMPONENTS["TaskTypeCreateRequest"]["properties"]["executorRoles"]
+    slug = objects[ours["items"]["$ref"].rsplit("/", 1)[-1]]
+    assert ours["maxItems"] == core["maxItems"]
+    assert ours["uniqueItems"] is True
+    for key in ("minLength", "maxLength", "pattern"):
+        assert slug[key] == core["items"][key], key

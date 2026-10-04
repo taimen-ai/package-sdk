@@ -1,0 +1,7 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/object.schema.json
+apiVersion: taimen.ai/v1
+kind: Role
+key: accounting
+spec:
+  name: Accounting
+  description: Checks and pays supplier invoices

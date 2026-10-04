@@ -72,7 +72,10 @@ WORK_DIR = ".package-sdk"
 DEFAULT_PLAN = "plan.json"
 # Первая строка установки, которую pkg_plan пишет для каталога одного пакета: такой файл
 # сервер перезаписывает, любой другой — нет.
-GENERATED = "# Установка одного пакета для плана package-sdk mcp (pkg_plan по path).\n"
+GENERATED = "# Installation of one package for a package-sdk mcp plan (pkg_plan by path).\n"
+# Та же строка до перевода вывода на английский (TAI-ADR-0060): установки, записанные
+# прежними версиями, сервер тоже узнаёт своими.
+GENERATED_BEFORE = "# Установка одного пакета для плана package-sdk mcp (pkg_plan по path).\n"
 # Опции package-sdk edit, значение которых — фрагмент YAML или @<файл>.
 FRAGMENT_OPTIONS = frozenset({"step", "stage", "row", "on_event", "on-event", "schema"})
 PATH_OPTIONS = frozenset({"file", "package"})
@@ -111,7 +114,8 @@ TOOL_DESCRIPTIONS = {
         "nothing to a stand."
     ),
     "pkg_describe": (
-        "What an installation of a package directory needs: variables, agent nodes, "
+        "What an installation of a package directory needs: variables, the package settings "
+        "an administrator changes later (path, type, default, required, x-ref), agent nodes, "
         "ontologies, requires and core compatibility; 'env_example' adds a template of the "
         "variables file. Writes nothing."
     ),
@@ -197,8 +201,8 @@ class Session:
         resolved = self.path(value).resolve()
         if not resolved.is_relative_to(self.root):
             raise PackageError(
-                f"path_outside_root: {what} {value} — вне корня сессии {self.root} "
-                f"(корень задаёт {ROOT_ENV} или клиент MCP)"
+                f"path_outside_root: {what} {value} — outside the session root {self.root} "
+                f"(the root is set by {ROOT_ENV} or the MCP client)"
             )
         return resolved
 
@@ -226,8 +230,8 @@ def stand(server: str, environ: Mapping[str, str] | None = None) -> str:
             server = allowed[0]
         else:
             raise PackageError(
-                "arguments_invalid: нужен server — один из стендов "
-                + (", ".join(allowed) if allowed else f"(не настроены: задайте {SERVERS_ENV})")
+                "arguments_invalid: server is required — one of the stands "
+                + (", ".join(allowed) if allowed else f"(none configured: set {SERVERS_ENV})")
             )
     try:
         server = check_server(server)
@@ -235,8 +239,8 @@ def stand(server: str, environ: Mapping[str, str] | None = None) -> str:
         raise PackageError(f"server_not_allowed: {error}") from error
     if server not in allowed:
         raise PackageError(
-            f"server_not_allowed: стенд {server} не настроен для этого сервера — разрешены: "
-            + (", ".join(allowed) or f"никакие (задайте {SERVERS_ENV} в окружении сервера)")
+            f"server_not_allowed: stand {server} is not configured for this server — allowed: "
+            + (", ".join(allowed) or f"none (set {SERVERS_ENV} in the server environment)")
         )
     return server
 
@@ -254,8 +258,8 @@ def notify_address(url: str, environ: Mapping[str, str] | None = None) -> str:
     allowed = allowed_servers(environ)
     if not any(url == s or url.startswith(s + "/") for s in allowed):
         raise PackageError(
-            f"server_not_allowed: {NOTIFY_URL_ENV} {url} — не под разрешённым стендом "
-            f"({', '.join(allowed) or f'задайте {SERVERS_ENV}'})"
+            f"server_not_allowed: {NOTIFY_URL_ENV} {url} — not under an allowed stand "
+            f"({', '.join(allowed) or f'set {SERVERS_ENV}'})"
         )
     return url
 
@@ -277,7 +281,7 @@ def _installation(session: Session, path: str, install: str) -> tuple[Installati
     from package_sdk import commands
 
     if bool(path) == bool(install):
-        raise PackageError("arguments_invalid: назовите ровно одно — path (пакет) или install")
+        raise PackageError("arguments_invalid: name exactly one — path (package) or install")
     namespace = argparse.Namespace(
         install=session.path(install) if install else None,
         package=[str(session.path(path))] if path else None,
@@ -428,7 +432,7 @@ def plan_output(session: Session, out: str) -> Path:
     inside = work.is_relative_to(session.root) and resolved.is_relative_to(work)
     if not inside or resolved.suffix != ".json":
         raise PackageError(
-            f"out_not_allowed: {out} — план пишется только файлом .json в {session.work}"
+            f"out_not_allowed: {out} — the plan is written only as a .json file in {session.work}"
         )
     if resolved.exists():
         try:
@@ -436,7 +440,7 @@ def plan_output(session: Session, out: str) -> Path:
         except (OSError, ValueError):
             existing = None
         if not isinstance(existing, dict) or existing.get("format") != install_module.PLAN_FORMAT:
-            raise PackageError(f"out_not_a_plan: {resolved} — не план, перезаписывать его нельзя")
+            raise PackageError(f"out_not_a_plan: {resolved} — not a plan, it cannot be overwritten")
     resolved.parent.mkdir(parents=True, exist_ok=True)
     return resolved
 
@@ -450,14 +454,18 @@ def package_installation(package: Path, plan_file: Path) -> Path:
 
     directory = package_path(package)
     if not (directory / "package.yaml").is_file():
-        raise PackageError(f"package_not_found: {package} — нет package.yaml")
+        raise PackageError(f"package_not_found: {package} — no package.yaml")
     target = plan_file.with_name(plan_file.stem + ".install.yaml")
     if target.is_symlink() or not target.resolve().is_relative_to(plan_file.parent):
-        raise PackageError(f"install_file_exists: {target} — ссылка; писать по ней нельзя")
-    if target.exists() and not target.read_text(encoding="utf-8").startswith(GENERATED):
         raise PackageError(
-            f"install_file_exists: {target} — уже есть и написан не package-sdk mcp; "
-            "назовите другой out"
+            f"install_file_exists: {target} — a symlink; writing through it is not allowed"
+        )
+    if target.exists() and not target.read_text(encoding="utf-8").startswith(
+        (GENERATED, GENERATED_BEFORE)
+    ):
+        raise PackageError(
+            f"install_file_exists: {target} — already exists and was not written by "
+            "package-sdk mcp; name another out"
         )
     base = target.parent
     document = {
@@ -487,7 +495,7 @@ def plan(
     from package_sdk import commands
 
     if bool(path) == bool(install):
-        raise PackageError("arguments_invalid: назовите ровно одно — install или path (пакет)")
+        raise PackageError("arguments_invalid: name exactly one — install or path (package)")
     target_server = stand(server)
     plan_file = plan_output(session, out)
     install_file = (
@@ -522,7 +530,7 @@ def plan(
         ],
         "changes": install_module.count_changes(document),
         "lines": install_module.format_plan(document),
-        "log": [line for line in lines if line.startswith("предупреждение:")],
+        "log": [line for line in lines if line.startswith("warning:")],
         "plan": document,
     }
 
@@ -721,15 +729,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="package-sdk mcp",
         description=(
-            f"MCP-сервер автора пакетов по stdio; стенды — {SERVERS_ENV}, корень сессии — "
-            f"{ROOT_ENV}, корни клиента или текущий каталог"
+            f"package author MCP server over stdio; stands — {SERVERS_ENV}, session root — "
+            f"{ROOT_ENV}, the client roots or the current directory"
         ),
     )
     parser.parse_args(argv)
     try:
         server = build_server()
     except ImportError as error:
-        print(f"ошибка: нет библиотеки MCP ({error}) — поставьте package-sdk[mcp]", file=sys.stderr)
+        print(f"error: no MCP library ({error}) — install package-sdk[mcp]", file=sys.stderr)
         return 1
     server.run("stdio")
     return 0

@@ -1,42 +1,43 @@
-"""Пакеты каталога Control Plane (TAI-ADR-0044): загрузка, проверка, применение, экспорт.
+"""Control Plane catalog packages (TAI-ADR-0044): load, check, apply, export.
 
-Пакет — каталог packages/<key>/ с package.yaml и YAML-файлами объектов в обёртке
-{apiVersion, kind, key, spec}; spec — тело запроса API control-plane. Установка —
-файл окружения (kind: Installation): какие пакеты ставить и какие ключи вывести
-из оборота. Команды каталога CLI package-sdk (TAI-ADR-0062):
+A package is a directory packages/<key>/ with package.yaml and YAML object files in the
+{apiVersion, kind, key, spec} envelope; spec is the control-plane API request body. An
+installation is an environment file (kind: Installation): which packages to install and which
+keys to retire. Catalog commands of the package-sdk CLI (TAI-ADR-0062):
 
-    package-sdk check                              # все пакеты, без стенда
+    package-sdk check                              # all packages, no stand
     package-sdk check --install deploy/packages.yaml
-    package-sdk export --server https://cp.example.com --kind TaskType --key <ключ> \\
-        --package packages/<пакет>
+    package-sdk export --server https://cp.example.com --kind TaskType --key <key> \\
+        --package packages/<package>
 
-Установка — один план на все виды (TAI-ADR-0062 п.6–7): источники фиксируются в
-packages.lock, план строится без записи и сохраняется с хэшем, применяется ровно он и только
-после подтверждения человека:
+Installation is one plan for all kinds (TAI-ADR-0062 p.6-7): sources are pinned in
+packages.lock, the plan is built without writes and saved with its hash, and exactly that plan
+is applied, only after a human confirms:
 
     package-sdk lock  --install deploy/packages.yaml
     package-sdk plan  --install deploy/packages.yaml --server https://cp.example.com \\
         --out plan.json
     package-sdk apply --plan plan.json
-    package-sdk cache prune                        # выгрузки git без ссылок из packages.lock
+    package-sdk cache prune                        # git checkouts not referenced by packages.lock
 
-Процессы и календари (TAI-ADR-0054, виды Process и Calendar) проверяет ядро, а тесты
-пакета (tests/*.test.yaml) прогоняет его песочница:
+Processes and calendars (TAI-ADR-0054, kinds Process and Calendar) are checked by the core, and
+package tests (tests/*.test.yaml) are run by its sandbox:
 
     package-sdk check --install deploy/packages.yaml --server https://cp.example.com
-    package-sdk test  --package packages/<пакет> --server https://cp.example.com
-    package-sdk migrate-expr --package packages/<пакет> [--write]
+    package-sdk test  --package packages/<package> --server https://cp.example.com
+    package-sdk migrate-expr --package packages/<package> [--write]
 
-Токен для plan/apply/export: переменная CP_TOKEN (access token audience control-plane)
-или credential MCP-плагина через control_plane_client — запускать тогда
-с extra connector (control-plane-client). Токен credential берётся перед каждым запросом и
-обновляется, когда истекает (package_sdk.auth); CP_TOKEN не обновляется — его срок на
-человеке.
+Token for plan/apply/export: the CP_TOKEN variable (access token, audience control-plane)
+or the MCP plugin credential via control_plane_client — then run with
+extra connector (control-plane-client). The credential token is taken before each request and
+refreshed when it expires (package_sdk.auth); CP_TOKEN is not refreshed — its lifetime is up to
+the human.
 
-Вид NotificationRule (TAI-ADR-0053, ADR-0005 notification-service) применяется не к
-ядру, а к сервису уведомлений: адрес — переменная установки NOTIFICATION_SERVICE_URL,
-токен — NOTIFY_TOKEN (audience notification-service, scope notifications:admin) или
-обмен того же IAM credential на этот audience через control_plane_client.
+Kind NotificationRule (TAI-ADR-0053, ADR-0005 notification-service) is applied not to the
+core but to the notification service: the address is the installation variable
+NOTIFICATION_SERVICE_URL, the token is NOTIFY_TOKEN (audience notification-service, scope
+notifications:admin) or an exchange of the same IAM credential for that audience via
+control_plane_client.
 """
 
 from __future__ import annotations
@@ -105,12 +106,12 @@ def _bearer(server: str) -> Bearer:
         from control_plane_client.credentials import resolve_credential
     except ImportError as error:
         raise PackageError(
-            "нет CP_TOKEN и нет control_plane_client — задайте CP_TOKEN или поставьте "
-            "клиент ядра: package-sdk[connector] или package-sdk[mcp]"
+            "no CP_TOKEN and no control_plane_client — set CP_TOKEN or install "
+            "the core client: package-sdk[connector] or package-sdk[mcp]"
         ) from error
     credential = resolve_credential(server)
     if credential is None:
-        raise PackageError(f"нет credential для {server} в ~/.config/iam/credentials.json")
+        raise PackageError(f"no credential for {server} in ~/.config/iam/credentials.json")
     return Bearer.of_credential(credential)
 
 
@@ -133,8 +134,8 @@ def _bearer_for(
         )
     except ImportError as error:
         raise PackageError(
-            f"нет {fallback} и нет control_plane_client — задайте {fallback} (access token "
-            f"audience {audience}) или поставьте клиент ядра: package-sdk[connector] или "
+            f"no {fallback} and no control_plane_client — set {fallback} (access token "
+            f"audience {audience}) or install the core client: package-sdk[connector] or "
             "package-sdk[mcp]"
         ) from error
     credential = iam_credential_from_environment(
@@ -142,8 +143,8 @@ def _bearer_for(
     )
     if credential is None:
         raise PackageError(
-            f"нет {fallback}, а IAM credential не настроен (CONTROL_PLANE_IAM_URL) — токен "
-            f"audience {audience} получить нечем"
+            f"no {fallback}, and the IAM credential is not configured (CONTROL_PLANE_IAM_URL) — "
+            f"nothing to obtain a token for audience {audience} with"
         )
     return Bearer.of_credential(credential)
 
@@ -154,7 +155,7 @@ def _notify_target(environ: dict[str, str]) -> tuple[Authorized, dict[str, str]]
     url = environ.get(NOTIFY_URL_ENV)
     if not url:
         raise PackageError(
-            f"NotificationRule применяются к сервису уведомлений — задайте {NOTIFY_URL_ENV}"
+            f"NotificationRule objects are applied to the notification service — set {NOTIFY_URL_ENV}"
         )
     token = _bearer_for(NOTIFY_AUDIENCE, NOTIFY_SCOPES, fallback=NOTIFY_TOKEN_ENV, environ=environ)
     return Authorized(Http(url), token), {}
@@ -202,7 +203,7 @@ def check_report(
     if CORE_MISSING in warnings and not schema_only:
         # Молча проверять одну схему нельзя (TAI-ADR-0062, FR-014): это отдельный режим.
         warnings.remove(CORE_MISSING)
-        errors.append(CORE_MISSING + " — либо запустите с --schema-only")
+        errors.append(CORE_MISSING + " — or run with --schema-only")
     problems = [static_error(e) for e in errors]
     core = "skipped"
     if server:
@@ -222,11 +223,11 @@ def check_report(
         except CoreUnsupported as error:
             core = "unsupported"
             warnings.append(
-                f"ядро не поддерживает проверку процессов ({error}) — проверена только схема"
+                f"the core does not support checking processes ({error}) — only the schema was checked"
             )
         except (urllib.error.URLError, OSError) as error:
             core = "unreachable"
-            warnings.append(f"ядро недоступно ({error}) — проверена только схема")
+            warnings.append(f"the core is unreachable ({error}) — only the schema was checked")
     return {
         "ok": not problems,
         "errors": problems,
@@ -254,21 +255,21 @@ def _check_command(args: argparse.Namespace) -> int:
         print(json.dumps(report, ensure_ascii=False, indent=2))
     else:
         for warning in warnings:
-            print("предупреждение:", warning)
+            print("warning:", warning)
         for problem in problems:
             print(
-                "ошибка:",
+                "error:",
                 format_core_error(problem)
                 if problem.get("code") != "static_check"
                 else (f"{problem['file']}: " if problem.get("file") else "") + problem["message"],
             )
         print(
-            f"{'не пройдено' if problems else 'ok'}: пакетов {report['packages']}, "
-            f"объектов {report['objects']}, тестов {report['tests']}"
+            f"{'failed' if problems else 'ok'}: packages {report['packages']}, "
+            f"objects {report['objects']}, tests {report['tests']}"
             + {
-                "checked": ", проверено ядром",
-                "unsupported": ", ядро: только схема",
-                "unreachable": ", ядро недоступно",
+                "checked": ", checked by the core",
+                "unsupported": ", core: schema only",
+                "unreachable": ", core unreachable",
                 "skipped": "",
             }[core]
         )
@@ -306,14 +307,14 @@ def _plan_command(args: argparse.Namespace, env: dict[str, str]) -> int:
     if args.json:
         print(json.dumps(document, ensure_ascii=False, indent=2))
     else:
-        print(f"план сохранён: {args.out} — применить: package-sdk apply --plan {args.out}")
+        print(f"plan saved: {args.out} — to apply: package-sdk apply --plan {args.out}")
     return 0
 
 
 def _ask(question: str) -> bool:
     """Подтверждение человека в терминале; без терминала — отказ."""
     if not sys.stdin.isatty():
-        print(f"{question} — нужен ответ человека в терминале, применение отменено")
+        print(f"{question} — a human answer in a terminal is required, apply cancelled")
         return False
     try:
         answer = input(f"{question} [y/N] ")
@@ -327,7 +328,9 @@ def _apply_plan_command(args: argparse.Namespace, env: dict[str, str]) -> int:
     # адрес стенда называет человек, а не файл плана: план применяется туда, куда сказали
     server = args.server.rstrip("/")
     if server != document["server"]:
-        raise PackageError(f"план построен для {document['server']}, а применяется к {server}")
+        raise PackageError(
+            f"the plan was built for {document['server']}, but is applied to {server}"
+        )
     installation = install_module.install_file(document, args.plan)
     install_module.apply(
         args.plan,
@@ -347,21 +350,21 @@ def _cache_command(args: argparse.Namespace) -> int:
     """package-sdk cache prune: выгрузки кэша git, на которые не ссылается ни один lock."""
     if args.all:
         result = install_module.prune(None)
-        print(f"кэш источников git очищен: удалено {len(result.removed)}")
+        print(f"git source cache cleared: removed {len(result.removed)}")
         return 0
     locks = [Path(p) for p in args.lock] if args.lock else install_module.find_locks(Path("."))
     if not locks:
         # без единого lock «не нужные ни одному lock» — это все выгрузки: молча так не чистим
         raise PackageError(
-            "под текущим каталогом нет packages.lock — запустите prune в каталоге установок, "
-            "назовите их lock-файлы (--lock) или очистите весь кэш явно (--all); ничего не удалено"
+            "no packages.lock under the current directory — run prune in the installations directory, "
+            "name their lock files (--lock) or clear the whole cache explicitly (--all); nothing removed"
         )
     for path in locks:
-        print(f"   учтён {_rel(path.resolve())}")
+        print(f"   counted {_rel(path.resolve())}")
     result = install_module.prune(locks)
     print(
-        f"выгрузок удалено: {len(result.removed)}, оставлено по lock: {result.kept}, "
-        f"недавно использованных: {result.recent}"
+        f"checkouts removed: {len(result.removed)}, kept by lock: {result.kept}, "
+        f"recently used: {result.recent}"
     )
     return 0
 
@@ -381,7 +384,7 @@ def _export_planned(
                 plan_request(package, env, workspace=getattr(args, "workspace", None))
             )
         except (PackageError, RuntimeError, OSError) as error:
-            print(f"предупреждение: план ядра не построен ({error}) — поля консоли не отмечены")
+            print(f"warning: the core plan was not built ({error}) — console fields are not marked")
     for key in args.key:
         body = export.fetch(http, headers, args.kind, key, args.version)
         print(export.export_object(args.package, args.kind, key, body, plan=plan, env=env).line())
@@ -418,13 +421,13 @@ def _docs_command(args: argparse.Namespace) -> int:
     updated = manifest.apply_docs(current, section)
     if args.check:
         if updated != current:
-            print(f"устарел раздел README: {_rel(readme)} — запустите package-sdk docs --write")
+            print(f"README section is outdated: {_rel(readme)} — run package-sdk docs --write")
             return 1
         print(f"ok: {_rel(readme)}")
         return 0
     if updated != current:
         readme.write_text(updated, encoding="utf-8")
-        print("записан", _rel(readme))
+        print("written", _rel(readme))
     return 0
 
 
@@ -442,147 +445,175 @@ def main(argv: list[str] | None = None) -> int:
     )
     sub = parser.add_subparsers(dest="command", required=True)
     check_cmd = sub.add_parser(
-        "check", help="проверить пакеты: схема и ссылки; с --server — ещё и ядром"
+        "check", help="check packages: schema and references; with --server also by the core"
     )
     check_cmd.add_argument(
-        "--install", type=Path, help="файл установки; без него — все пакеты packages/"
+        "--install", type=Path, help="installation file; without it, all packages in packages/"
     )
     check_cmd.add_argument(
-        "--package", action="append", help="пакет (каталог или ключ); можно несколько"
+        "--package", action="append", help="package (directory or key); may be repeated"
     )
     check_cmd.add_argument(
-        "--server", help="Control Plane: проверка процессов ядром (checkOnly), если оно умеет"
+        "--server", help="Control Plane: check processes by the core (checkOnly) if it supports it"
     )
     check_cmd.add_argument(
-        "--env", type=Path, help="откуда брать ${ПЕРЕМЕННЫЕ} пакета (по умолчанию — окружение)"
+        "--env",
+        type=Path,
+        help="where to take package ${VARIABLES} from (default: the environment)",
     )
     check_cmd.add_argument(
-        "--workspace", help="workspace, чьи роли и календари читает проверка ядром"
+        "--workspace", help="workspace whose roles and calendars the core check reads"
     )
     check_cmd.add_argument(
         "--json",
         action="store_true",
-        help="ошибки — JSON {code, severity, path, file, line, message, hint}",
+        help="errors as JSON {code, severity, path, file, line, message, hint}",
     )
     check_cmd.add_argument(
         "--schema-only",
         action="store_true",
-        help="без кода ядра: только схема и ссылки (иначе отсутствие ядра — ошибка)",
+        help="without the core's code: schema and references only (otherwise a missing core is an error)",
     )
     lock_cmd = sub.add_parser(
-        "lock", help="зафиксировать источники установки: коммит и хэш содержимого (packages.lock)"
+        "lock", help="pin installation sources: commit and content hash (packages.lock)"
     )
-    lock_cmd.add_argument("--install", type=Path, required=True, help="файл установки")
-    cache_cmd = sub.add_parser("cache", help="кэш источников git (package-sdk cache prune)")
+    lock_cmd.add_argument("--install", type=Path, required=True, help="installation file")
+    cache_cmd = sub.add_parser("cache", help="git source cache (package-sdk cache prune)")
     cache_sub = cache_cmd.add_subparsers(dest="cache_command", required=True)
     prune_cmd = cache_sub.add_parser(
         "prune",
-        help="удалить выгрузки, на которые не ссылается ни один packages.lock текущего каталога",
+        help="remove checkouts not referenced by any packages.lock of the current directory",
     )
     prune_cmd.add_argument(
-        "--all", action="store_true", help="удалить весь кэш: выгрузки и зеркала источников"
+        "--all", action="store_true", help="remove the whole cache: checkouts and source mirrors"
     )
     prune_cmd.add_argument(
         "--lock",
         action="append",
-        help="учесть этот lock-файл (можно несколько); по умолчанию — все packages.lock "
-        "под текущим каталогом",
+        help="take this lock file into account (may be repeated); by default all packages.lock "
+        "under the current directory",
     )
     plan_cmd = sub.add_parser(
-        "plan", help="построить единый план установки (все виды) и сохранить его с хэшем"
+        "plan", help="build the one installation plan (all kinds) and save it with its hash"
     )
-    plan_cmd.add_argument("--install", type=Path, required=True, help="файл установки")
+    plan_cmd.add_argument("--install", type=Path, required=True, help="installation file")
     plan_cmd.add_argument("--server", required=True)
     plan_cmd.add_argument(
-        "--out", type=Path, required=True, help="файл плана (package-sdk.plan/v1) для apply --plan"
+        "--out", type=Path, required=True, help="plan file (package-sdk.plan/v1) for apply --plan"
     )
     plan_cmd.add_argument(
-        "--env", type=Path, default=Path(".env"), help="откуда брать ${ПЕРЕМЕННЫЕ} пакета"
+        "--env", type=Path, default=Path(".env"), help="where to take package ${VARIABLES} from"
     )
-    plan_cmd.add_argument("--workspace", help="workspace процессов пакета (workspaceId ядра)")
+    plan_cmd.add_argument(
+        "--workspace", help="workspace of the package processes (the core's workspaceId)"
+    )
     plan_cmd.add_argument(
         "--replay-limit",
         type=int,
         default=DEFAULT_REPLAY_LIMIT,
-        help="экземпляров на процесс для replay (0–200)",
+        help="instances per process for replay (0–200)",
     )
     plan_cmd.add_argument(
         "--overwrite-console",
         action="store_true",
-        help="перезаписать поля, которые человек правил в консоли после прошлого применения "
-        "(по умолчанию они сохраняются); флаг хранится в плане под его хэшем",
+        help="overwrite fields a human edited in the console since the last apply "
+        "(by default they are kept); the flag is stored in the plan under its hash",
     )
-    plan_cmd.add_argument("--json", action="store_true", help="план документом JSON")
+    plan_cmd.add_argument("--json", action="store_true", help="the plan as a JSON document")
     apply_cmd = sub.add_parser(
-        "apply", help="применить ровно сохранённый план (после подтверждения человека)"
+        "apply", help="apply exactly the saved plan (after a human confirms)"
     )
-    apply_cmd.add_argument("--plan", type=Path, required=True, help="файл плана от plan --out")
+    apply_cmd.add_argument("--plan", type=Path, required=True, help="plan file from plan --out")
     apply_cmd.add_argument(
-        "--server", required=True, help="стенд; должен совпасть с тем, для которого построен план"
+        "--server", required=True, help="stand; must match the one the plan was built for"
     )
     apply_cmd.add_argument(
-        "--env", type=Path, default=Path(".env"), help="откуда брать ${ПЕРЕМЕННЫЕ} пакета"
+        "--env", type=Path, default=Path(".env"), help="where to take package ${VARIABLES} from"
     )
     migrate_cmd = sub.add_parser(
-        "migrate-expr", help="перевести прежние выражения пакета в CEL (diff; --write)"
+        "migrate-expr", help="migrate legacy package expressions to CEL (diff; --write)"
     )
-    migrate_cmd.add_argument("--package", required=True, help="пакет (каталог или ключ)")
-    migrate_cmd.add_argument("--write", action="store_true", help="записать с сохранением файла")
-    export_cmd = sub.add_parser("export", help="выгрузить объекты из Control Plane в пакет")
-    export_cmd.add_argument("--server", help="Control Plane; для NotificationRule не нужен")
+    migrate_cmd.add_argument("--package", required=True, help="package (directory or key)")
+    migrate_cmd.add_argument(
+        "--write", action="store_true", help="write, preserving the file style"
+    )
+    export_cmd = sub.add_parser("export", help="export objects from Control Plane into a package")
+    export_cmd.add_argument("--server", help="Control Plane; not needed for NotificationRule")
     export_cmd.add_argument(
         "--env",
         type=Path,
         default=Path(".env"),
-        help=f"файл переменных установки: {NOTIFY_URL_ENV} для NotificationRule, значения "
-        "${…} — чтобы выгрузка Process и Calendar вернула их ссылками на переменные",
+        help=f"installation variables file: {NOTIFY_URL_ENV} for NotificationRule, values "
+        "${…} — so that exporting Process and Calendar returns them as variable references",
     )
     export_cmd.add_argument(
-        "--workspace", help="workspace плана ядра для полей консоли (Process и Calendar)"
+        "--workspace", help="workspace of the core plan for console fields (Process and Calendar)"
     )
     export_cmd.add_argument("--kind", required=True, choices=list(CATALOG_KINDS))
     export_cmd.add_argument("--key", required=True, action="append")
-    export_cmd.add_argument("--version", help="версия (по умолчанию новейшая активная)")
+    export_cmd.add_argument("--version", help="version (default: the newest active)")
     export_cmd.add_argument(
-        "--package", type=Path, required=True, help="каталог пакета, например packages/<пакет>"
+        "--package", type=Path, required=True, help="package directory, e.g. packages/<package>"
     )
     init_cmd = sub.add_parser(
-        "init", help="заготовка пакета: манифест, процесс с тестом, CI, README"
+        "init", help="package scaffold: manifest, process with a test, CI, README"
     )
-    init_cmd.add_argument("dir", type=Path, help="каталог пакета (новый или пустой)")
-    init_cmd.add_argument("--key", help="ключ пакета; по умолчанию — имя каталога")
-    init_cmd.add_argument("--display-name", help="название пакета для людей")
-    init_cmd.add_argument("--license", help="лицензия пакета (идентификатор SPDX)")
+    init_cmd.add_argument("dir", type=Path, help="package directory (new or empty)")
+    init_cmd.add_argument("--key", help="package key; default: the directory name")
+    init_cmd.add_argument("--display-name", help="human-readable package name")
+    init_cmd.add_argument("--license", help="package license (SPDX identifier)")
     init_cmd.add_argument(
-        "--integration", action="store_true", help="код интеграции: наблюдатель и описание агента"
+        "--integration",
+        action="store_true",
+        help="integration code: observer and agent description",
     )
-    init_cmd.add_argument("--image", action="store_true", help="Dockerfile образа интеграции")
+    init_cmd.add_argument(
+        "--image", action="store_true", help="Dockerfile of the integration image"
+    )
     init_cmd.add_argument(
         "--database",
         action="store_true",
-        help="сервис PostgreSQL в CI для сценариев правил и типов задач "
-        "(по умолчанию — если они уже есть в каталоге)",
+        help="PostgreSQL service in CI for work rule and task type scenarios "
+        "(default: if they already exist in the directory)",
     )
-    add_cmd = sub.add_parser("add", help="заготовка объекта любого вида каталога")
-    add_cmd.add_argument("kind", help="вид: TaskType, task-type, rule, process, …")
-    add_cmd.add_argument("key", help="ключ объекта")
+    workflow_cmd = sub.add_parser(
+        "workflow",
+        help="regenerate the CI workflow of a package by the layout of this installation",
+    )
+    workflow_cmd.add_argument(
+        "dir", type=Path, nargs="?", default=Path("."), help="package directory (default: .)"
+    )
+    workflow_cmd.add_argument(
+        "--check", action="store_true", help="exit 1 if the workflow differs; write nothing"
+    )
+    add_cmd = sub.add_parser("add", help="scaffold of an object of any catalog kind")
+    add_cmd.add_argument("kind", help="kind: TaskType, task-type, rule, process, …")
+    add_cmd.add_argument("key", help="object key")
     add_cmd.add_argument(
-        "--package", type=Path, default=Path("."), help="каталог пакета (по умолчанию текущий)"
+        "--package",
+        type=Path,
+        default=Path("."),
+        help="package directory (default: the current one)",
     )
     describe_cmd = sub.add_parser(
         "describe",
-        help="предпосылки установки пакета: переменные, узлы агентов, онтологии, зависимости",
+        help=(
+            "package installation prerequisites: variables, settings, agent nodes, "
+            "ontologies, dependencies"
+        ),
     )
-    describe_cmd.add_argument("path", type=Path, help="каталог пакета")
+    describe_cmd.add_argument("path", type=Path, help="package directory")
     describe_cmd.add_argument(
-        "--env-example", action="store_true", help="заготовка файла переменных установки"
+        "--env-example", action="store_true", help="template of the installation variables file"
     )
-    describe_cmd.add_argument("--json", action="store_true", help="то же в JSON")
-    docs_cmd = sub.add_parser("docs", help="сгенерированные разделы README пакета")
-    docs_cmd.add_argument("path", type=Path, help="каталог пакета")
+    describe_cmd.add_argument("--json", action="store_true", help="the same as JSON")
+    docs_cmd = sub.add_parser("docs", help="generated README sections of a package")
+    docs_cmd.add_argument("path", type=Path, help="package directory")
     mode = docs_cmd.add_mutually_exclusive_group()
-    mode.add_argument("--write", action="store_true", help="обновить раздел в README.md")
-    mode.add_argument("--check", action="store_true", help="1, если раздел README устарел")
+    mode.add_argument("--write", action="store_true", help="update the section in README.md")
+    mode.add_argument(
+        "--check", action="store_true", help="exit 1 if the README section is outdated"
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -602,14 +633,16 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 result = scaffold.add(args.package, args.kind, args.key)
             for path in result.created:
-                print("создан", _rel(path))
+                print("created", _rel(path))
             for path in result.updated:
-                print("изменён", _rel(path))
+                print("changed", _rel(path))
             for path in result.skipped:
-                print("оставлен как был", _rel(path))
+                print("unchanged", _rel(path))
             for warning in result.warnings:
-                print("предупреждение:", warning)
+                print("warning:", warning)
             return 0
+        if args.command == "workflow":
+            return _workflow_command(args)
         if args.command == "describe":
             return _describe_command(args)
         if args.command == "docs":
@@ -642,7 +675,7 @@ def main(argv: list[str] | None = None) -> int:
             )
         else:
             if not args.server:
-                raise PackageError("нужен --server (адрес Control Plane)")
+                raise PackageError("--server is required (the Control Plane address)")
             http = Authorized(Http(args.server), _bearer(args.server))
             headers: dict[str, str] = {}
             if args.kind in PLAN_KINDS:
@@ -657,20 +690,41 @@ def main(argv: list[str] | None = None) -> int:
             path.write_text(
                 dump_document(to_document(args.kind, key, body), schema_rel), encoding="utf-8"
             )
-            print("записан", _rel(path), f"(v{body.get('version')})" if "version" in body else "")
+            print("written", _rel(path), f"(v{body.get('version')})" if "version" in body else "")
         return 0
     except CoreUnsupported as error:
         print(
-            f"ошибка: {error} — проверьте, что Control Plane новее движка процессов (CP-ADR-0074)",
+            f"error: {error} — check that Control Plane is newer than the process engine (CP-ADR-0074)",
             file=sys.stderr,
         )
         return 1
     except (PackageError, RuntimeError) as error:
-        print("ошибка:", error, file=sys.stderr)
+        print("error:", error, file=sys.stderr)
         return 1
     except urllib.error.URLError as error:
-        print(f"ошибка: Control Plane недоступен: {error.reason}", file=sys.stderr)
+        print(f"error: Control Plane is unreachable: {error.reason}", file=sys.stderr)
         return 1
+
+
+def _workflow_command(args: argparse.Namespace) -> int:
+    from package_sdk import scaffold
+
+    result = scaffold.regenerate(args.dir, check=args.check)
+    layout = "flat" if result.layout.flat else "segmented"
+    for warning in result.warnings:
+        print("warning:", warning)
+    if not result.changed:
+        print("unchanged", _rel(result.path), f"(layout: {layout})")
+        return 0
+    if args.check:
+        print(
+            f"error: {_rel(result.path)} differs from the workflow of this installation "
+            f"(layout: {layout}) — run package-sdk workflow",
+            file=sys.stderr,
+        )
+        return 1
+    print("changed", _rel(result.path), f"(layout: {layout}) — review the diff before committing")
+    return 0
 
 
 if __name__ == "__main__":

@@ -1,0 +1,42 @@
+# yaml-language-server: $schema=../../../../../schema/v1/object.schema.json
+# Package settings (TAI-ADR-0067, CP-ADR-0081): what an administrator changes in the live
+# system. The process and the rule read them as settings.<field>; every label is a key of
+# the dictionaries i18n/en.yaml and i18n/ru.yaml.
+apiVersion: taimen.ai/v1
+kind: Package
+key: claims-intake
+spec:
+  version: 0.1.0
+  displayName: Claims intake
+  locales: [en, ru]
+  defaultLocale: en
+  settings:
+    schema:
+      type: object
+      required: [escalationRole]
+      properties:
+        refundThreshold: {type: integer, minimum: 0, maximum: 10000000, default: 50000}
+        escalate: {type: boolean, default: true}
+        escalationRole: {type: string, x-ref: role}
+        channel: {type: string, enum: [email, chat], default: email}
+        tags: {type: array, items: {type: string, pattern: "^[a-z]+$"}, default: []}
+        intake:
+          type: object
+          properties:
+            mailbox: {type: string, format: email, default: claims@example.com}
+    uischema:
+      type: VerticalLayout
+      elements:
+        - type: Group
+          label: claims-intake.settings.groups.approval
+          elements:
+            - {type: Control, scope: "#/properties/refundThreshold"}
+            - {type: Control, scope: "#/properties/escalate"}
+            - type: Control
+              scope: "#/properties/escalationRole"
+              rule:
+                effect: SHOW
+                condition: {scope: "#/properties/escalate", schema: {const: true}}
+        - {type: Control, scope: "#/properties/channel"}
+        - {type: Control, scope: "#/properties/tags"}
+        - {type: Control, scope: "#/properties/intake"}

@@ -1,0 +1,23 @@
+# yaml-language-server: $schema=../../../../../../schema/v1/view.schema.json
+# One instance: its header with the open steps as actions, the invoice, its steps and journal.
+apiVersion: taimen.ai/v1
+kind: View
+key: invoice-payment-card
+spec:
+  title: invoice-payment.card.title
+  source: {process: invoice-payment, instance: param.id}
+  layout:
+    - block: header
+      title: data.number
+      status: stage
+      actions: steps
+    - block: component
+      component: invoice-summary
+      with: {invoice: data}
+    - block: fields
+      section: invoice-payment.card.payment
+      items:
+        - {field: data.review}
+        - {field: data.paymentReference}
+    - block: steps
+    - block: timeline
